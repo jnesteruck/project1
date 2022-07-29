@@ -1,15 +1,14 @@
+from multiprocessing.sharedctypes import Value
 import mysql.connector
 import mysql_config as c
-import json
 import re
 import logging
 from product import Product
+from user import User
 
 def main():
 
     logging.basicConfig(filename="store.log", level=logging.DEBUG, format='%(asctime)s :: %(message)s')
-    
-    #print(passKeyGenerator("admin"))
     
     try:
         cnx = mysql.connector.connect(user=c.user, password=c.password, host=c.host, database = "project1")
@@ -23,11 +22,16 @@ def main():
         logging.info("Fatal error occurred. Exiting program...")
         return
 
-    # user = login(cursor)
+    print("\nWelcome to the Music Store!\n\nAre you a returning customer? (Y/N)")
+    uchoice = input("\n>>> ").lower()
+    if uchoice == "n":
+        addUser(cursor)
+
+    user = login(cursor)
     viewCatalog(cursor)
     # viewOrderHistory(cursor, user)
 
-def addOrder():
+def addOrder(cursor):
     '''
     addOrder
 
@@ -50,15 +54,71 @@ def viewOrderHistory(cursor, user):
     
     print("\n--- END OF ORDER HISTORY ---\n")
 
-def addUser():
+def addUser(cursor):
     '''
     addUser()
 
 
     '''
-    pass
+    # username loop
+    print("\nPlease choose a username.")
+    while True:
+        username = input("\nUsername: ")
+        cursor.execute("SELECT username FROM customers;")
+        in_use = False
+        for record in cursor:
+            if record == username:
+                in_use = True
+                break
+        if in_use:
+            print("Sorry, that username is already in use. Please pick a new username.")
+            continue
+        break
+    # password loop
+    print("Great! Now choose a password. Enter 1 for password rules.")
+    while True:
+        password = input("\nPassword: ")
+        if password == "1":
+            rules = "\n\t- Should be at least 8 characters\n\t- Should contain at least 1 digit (0-9)\n\t- Should contain at least 1 special character (. * ` ~ ! @ # $ % ^ & - _ + ?)\n\t- Should not contain spaces\n"
+            print("\n\n" + "PASSWORD RULES".center(50,"*") + rules)
+        if len(password) < 8:
+            print("\nPassword must be at least 8 characters. Try again.")
+            continue
+        if re.search("\d", password) == None:
+            print("\nPassword must contain at least 1 digit (0-9). Try again.")
+            continue
+        if re.search("[.*`~!@#$%^&\-_+?]", password) == None:
+            print("\nPassword must contain at least 1 special character (. * ` ~ ! @ # $ % ^ & - _ + ?). Try again.")
+            continue
+        if re.search(" ", password) != None:
+            print("\nPassword must not contain spaces. Try again.")
+            continue
+        break
+    passkey = passKeyGenerator(password)
 
-def editUser():
+    # get the rest of the account info
+
+    # name
+    print("\nPlease enter your full name.")
+    name = input("\nName: ")
+
+    # address (we'll get it via a process to ensure formatting)
+    print("\nPlease enter your street address. Do not include city, state, or ZIP Code information.")
+    street = input("\nAddress: ")
+    print("\nPlease enter your city.")
+    city = input("\nCity: ")
+    print("\nPlease enter your state. Enter '0' if not applicable.")
+    state = input("\nState: ")
+    print("\nPlease enter your ZIP Code.")
+    zip = input("\nZIP Code: ")
+    address = street + ", " + city + ", " + state + " " + zip
+
+    user = User(username, name, address, passkey)
+    
+
+
+
+def editUser(cursor):
     '''
     editUser
 
@@ -149,10 +209,13 @@ def login(cursor):
     pcount = 0
     while True:
         print("\nPlease enter your username.\n")
-        user = input("\nUsername: ")
-        query = 'SELECT passkey FROM customers WHERE username = "' + user + '";'
+        username = input("\nUsername: ")
+        query = 'SELECT * FROM customers WHERE username = "' + username + '";'
         cursor.execute(query)
-        key = cursor
+        for record in cursor:
+            _user = record
+        
+        key = int(_user[3])
         if ucount >= 5:
             print("Couldn't find username after 5 attempts. Exiting program...")
             break
@@ -171,6 +234,7 @@ def login(cursor):
                 pcount += 1
             elif ckey == key:
                 print("Login successful!")
+                user = User(_user[0], _user[1], _user[2], _user[3], _user[4])
                 return user
 
 
