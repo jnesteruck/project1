@@ -25,10 +25,12 @@ def main():
     print("\nWelcome to the Music Store!\n\nAre you a returning customer? (Y/N)")
     uchoice = input("\n>>> ").lower()
     if uchoice == "n":
-        addUser(cursor)
-
-    user = login(cursor)
-    viewCatalog(cursor)
+        user = addUser(cursor)
+    else:
+        user = None
+    while True:
+        username = login(cursor, user)
+        viewCatalog(cursor)
     # viewOrderHistory(cursor, user)
 
 def addOrder(cursor):
@@ -58,10 +60,13 @@ def addUser(cursor):
     '''
     addUser()
 
+    Allows the user to create an account with the store interface in order to purchase products
+
+    Returns a user object.
 
     '''
     # username loop
-    print("\nPlease choose a username.")
+    print("\nPlease choose a username.\n")
     while True:
         username = input("\nUsername: ")
         cursor.execute("SELECT username FROM customers;")
@@ -71,27 +76,27 @@ def addUser(cursor):
                 in_use = True
                 break
         if in_use:
-            print("Sorry, that username is already in use. Please pick a new username.")
+            print("Sorry, that username is already in use. Please pick a different username.\n")
             continue
         break
     # password loop
-    print("Great! Now choose a password. Enter 1 for password rules.")
+    print("Great! Now choose a password. Enter 1 for password rules.\n")
     while True:
         password = input("\nPassword: ")
         if password == "1":
             rules = "\n\t- Should be at least 8 characters\n\t- Should contain at least 1 digit (0-9)\n\t- Should contain at least 1 special character (. * ` ~ ! @ # $ % ^ & - _ + ?)\n\t- Should not contain spaces\n"
             print("\n\n" + "PASSWORD RULES".center(50,"*") + rules)
         if len(password) < 8:
-            print("\nPassword must be at least 8 characters. Try again.")
+            print("\nPassword must be at least 8 characters. Try again.\n")
             continue
         if re.search("\d", password) == None:
-            print("\nPassword must contain at least 1 digit (0-9). Try again.")
+            print("\nPassword must contain at least 1 digit (0-9). Try again.\n")
             continue
         if re.search("[.*`~!@#$%^&\-_+?]", password) == None:
-            print("\nPassword must contain at least 1 special character (. * ` ~ ! @ # $ % ^ & - _ + ?). Try again.")
+            print("\nPassword must contain at least 1 special character (. * ` ~ ! @ # $ % ^ & - _ + ?). Try again.\n")
             continue
         if re.search(" ", password) != None:
-            print("\nPassword must not contain spaces. Try again.")
+            print("\nPassword must not contain spaces. Try again.\n")
             continue
         break
     passkey = passKeyGenerator(password)
@@ -99,22 +104,31 @@ def addUser(cursor):
     # get the rest of the account info
 
     # name
-    print("\nPlease enter your full name.")
-    name = input("\nName: ")
+    print("\nPlease enter your first and last name. Please connect multiple last names using a dash (-).")
+    ninp = input("\nName: ").split(" ")
+    if len(ninp) == 1:
+        fname, lname = ninp[0], ""
+    else:
+        fname, lname = ninp[0], ninp[-1]
+    
 
     # address (we'll get it via a process to ensure formatting)
-    print("\nPlease enter your street address. Do not include city, state, or ZIP Code information.")
+    print("\nPlease enter your street address. Do not include city, state, or ZIP Code information.\n")
     street = input("\nAddress: ")
-    print("\nPlease enter your city.")
+    print("\nPlease enter your city.\n")
     city = input("\nCity: ")
-    print("\nPlease enter your state. Enter '0' if not applicable.")
+    print("\nPlease enter your state. Enter '0' if not applicable.\n")
     state = input("\nState: ")
-    print("\nPlease enter your ZIP Code.")
+    print("\nPlease enter your ZIP Code.\n")
     zip = input("\nZIP Code: ")
     address = street + ", " + city + ", " + state + " " + zip
 
-    user = User(username, name, address, passkey)
-    
+    user = User(username, fname, lname, address, passkey)
+
+    query = "INSERT INTO customers (username, firstName, lastName, address, passkey, adminAccess) VALUES ('" + username + "', '" + fname + "', '" + lname + "', '" + address + "', " + passkey + ", FALSE);"
+    cursor.execute(query)
+
+    return user
 
 
 
@@ -196,7 +210,7 @@ def viewCatalog(cursor):
     print("\n")
     return True
 
-def login(cursor):
+def login(cursor, user=None):
     '''
     login
 
@@ -205,6 +219,9 @@ def login(cursor):
     Returns str (username)
 
     '''
+    if type(user) == User:
+        print("\nWelcome to the music store! Thank you for creating an account with us!\n")
+        return user.getUsername()
     ucount = 0
     pcount = 0
     while True:
@@ -233,13 +250,9 @@ def login(cursor):
                 print("\nSorry, that password is incorrect. Please try again\n")
                 pcount += 1
             elif ckey == key:
-                print("Login successful!")
+                print("Login successful. Welcome back!")
                 user = User(_user[0], _user[1], _user[2], _user[3], _user[4])
                 return user
-
-
-
-    pass
 
 def searchKeyFile(char):
     with open("passKey.csv", "r") as f:
