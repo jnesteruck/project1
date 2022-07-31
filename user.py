@@ -9,6 +9,9 @@ class User:
     
     def getUsername(self) -> str:
         return self._user
+    
+    def isAdmin(self) -> bool:
+        return self._admin
 
     def __str__(self):
         return "Name: " + self._fname + " " + self._lname + ", Username: " + self._user + ", Admin Access: " + str(self._admin)

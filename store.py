@@ -21,7 +21,7 @@ def main():
         print("ERROR: Exiting program...")
         logging.info("Fatal error occurred. Exiting program...")
         return
-
+    
     print("\nWelcome to the Music Store!\n\nAre you a returning customer? (Y/N)")
     uchoice = input("\n>>> ").lower()
     if uchoice == "n":
@@ -99,7 +99,7 @@ def addUser(cursor):
             print("\nPassword must not contain spaces. Try again.\n")
             continue
         break
-    passkey = passKeyGenerator(password)
+    passkey = passKeyGenerator(password, cursor)
 
     # get the rest of the account info
 
@@ -130,7 +130,24 @@ def addUser(cursor):
 
     return user
 
+def adminTools(cursor, user):
+    '''
+    adminTools
+    
+    
+    '''
+    if not user.isAdmin():
+        print("Sorry. You do not have administrative access.")
+        return None
+    pass
 
+def removeUser(cursor):
+    '''
+    removeUser
+    
+    
+    '''
+    pass
 
 def editUser(cursor):
     '''
@@ -243,7 +260,7 @@ def login(cursor, user=None):
         else:
             print("\nPlease enter your password.\n")
             password = input("\nPassword: ")
-            ckey = passKeyGenerator(password)
+            ckey = passKeyGenerator(password, cursor)
             if pcount >= 5:
                 print("\n5 Incorrect passsord attempts. Exiting program...")
             if ckey != key:
@@ -254,16 +271,7 @@ def login(cursor, user=None):
                 user = User(_user[0], _user[1], _user[2], _user[3], _user[4])
                 return user
 
-def searchKeyFile(char):
-    with open("passKey.csv", "r") as f:
-            for line in f:
-                idx = int(line.split(",")[0])
-                string = line.split(",")[1]
-                if re.search(f'{char}', string):
-                    return idx
-    return None
-
-def passKeyGenerator(password):
+def passKeyGenerator(password, cursor):
     '''
     passKeyGenerator
 
@@ -275,9 +283,15 @@ def passKeyGenerator(password):
     n1 = 0
     n2 = 0
     for char in p1:
-        n1 += searchKeyFile(char)
+        cursor.execute("SELECT * FROM passKeyDecoder;")
+        for record in cursor:
+            if re.search(f'{char}', record[1]) != None:
+                n1 += record[0]
     for char in p2:
-        n2 += searchKeyFile(char)
+        cursor.execute("SELECT * FROM passKeyDecoder;")
+        for record in cursor:
+            if re.search(f'{char}', record[1]) != None:
+                n2 += record[0]
     return n1 * n2
 
 
