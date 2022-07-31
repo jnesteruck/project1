@@ -30,21 +30,78 @@ def main():
         user = None
     while True:
         username = login(cursor, user)
-        viewCatalog(cursor)
-    # viewOrderHistory(cursor, user)
+        options = {"0", "1", "2", "3", "4", "5", "6"}
+        omax = 6
+        print("\nWhat would you like to do today?\n")
+        print("\tView the catalog (1)")
+        print("\tMake a purchase (2)")
+        print("\tView Order History (3)")
+        print("\tView account balance (4)")
+        print("\tAdd to account balance (5)")
+        print("\tAccount settings (6)")
+        if user.isAdmin():
+            print("\tAdmin Tools (7)")
+            print("\tQuit (0)")
+            options.add("7")
+            omax = 7
+        else:
+            print("\tQuit(0)\n")
+        choice = input("\nMake your selection: >>> ")
+        if choice not in options:
+            print(f"Please select a valid option (Enter a digit between 1 and {omax}")
+        elif choice == "0":
+            break
+        elif choice == "1":
+            viewCatalog(cursor)
+        elif choice == "2":
+            addOrder(user, cursor)
+        elif choice == "3":
+            viewOrderHistory(cursor, user)
+        elif choice == "4":
+            print("\nYour balance: $" + str(user.getBalance()) + "\n")
+        elif choice == "5":
+            balance = user.addToBalance()
+            cursor.execute(f"UPDATE customers SET balance = {balance} WHERE username = '{username}'")
+        elif choice == "6":
+            editUser(cursor, user)
+        elif choice == "7":
+            admin_count = 0
+            while True:
+                print("\nPlease enter the admin password:\n")
+                userpass = input("\nPassword: ")
+                userkey = passKeyGenerator(userpass, cursor)
+                cursor.execute(f"SELECT passkey FROM customers WHERE username = 'admin'")
+                for record in cursor:
+                    adminkey = record[0]
+                if userkey != adminkey:
+                    if admin_count >= 5:
+                        print("\n5 incorrect password attempts. Exiting admin settings...\n")
+                        logging.info("Unauthorized attempt to reach administrative tools...")
+                        break
+                    print("\nSorry, that password is incorrect, try again...\n")
+                    admin_count += 1
 
-def addOrder(cursor):
+
+            
+                
+            
+
+
+def addOrder(user,cursor):
     '''
     addOrder
 
 
     '''
-    pass
+    total = 0
+    new_balance = user.changeBalance(total)
+    cursor.execute(f"UPDATE customers SET balance = {new_balance} WHERE username = '{user.getUsername()}';")
 
 def viewOrderHistory(cursor, user):
     '''
     viewOrderHistory
 
+    Allows user to view all orders they have made. Prints a table of their orders.
 
     '''
     query = 'SELECT * FROM orders WHERE username = "' + user + '";'
@@ -79,27 +136,9 @@ def addUser(cursor):
             print("Sorry, that username is already in use. Please pick a different username.\n")
             continue
         break
-    # password loop
+    # password method
     print("Great! Now choose a password. Enter 1 for password rules.\n")
-    while True:
-        password = input("\nPassword: ")
-        if password == "1":
-            rules = "\n\t- Should be at least 8 characters\n\t- Should contain at least 1 digit (0-9)\n\t- Should contain at least 1 special character (. * ` ~ ! @ # $ % ^ & - _ + ?)\n\t- Should not contain spaces\n"
-            print("\n\n" + "PASSWORD RULES".center(50,"*") + rules)
-        if len(password) < 8:
-            print("\nPassword must be at least 8 characters. Try again.\n")
-            continue
-        if re.search("\d", password) == None:
-            print("\nPassword must contain at least 1 digit (0-9). Try again.\n")
-            continue
-        if re.search("[.*`~!@#$%^&\-_+?]", password) == None:
-            print("\nPassword must contain at least 1 special character (. * ` ~ ! @ # $ % ^ & - _ + ?). Try again.\n")
-            continue
-        if re.search(" ", password) != None:
-            print("\nPassword must not contain spaces. Try again.\n")
-            continue
-        break
-    passkey = passKeyGenerator(password, cursor)
+    passkey = createPassword(cursor)
 
     # get the rest of the account info
 
@@ -123,9 +162,9 @@ def addUser(cursor):
     zip = input("\nZIP Code: ")
     address = street + ", " + city + ", " + state + " " + zip
 
-    user = User(username, fname, lname, address, passkey)
+    user = User(username, fname, lname, address, passkey, 0)
 
-    query = "INSERT INTO customers (username, firstName, lastName, address, passkey, adminAccess) VALUES ('" + username + "', '" + fname + "', '" + lname + "', '" + address + "', " + passkey + ", FALSE);"
+    query = "INSERT INTO customers (username, firstName, lastName, address, passkey, balance, adminAccess) VALUES ('" + username + "', '" + fname + "', '" + lname + "', '" + address + "', " + passkey + ", 0, FALSE);"
     cursor.execute(query)
 
     return user
@@ -138,23 +177,85 @@ def adminTools(cursor, user):
     '''
     if not user.isAdmin():
         print("Sorry. You do not have administrative access.")
+        logging.info("Unauthorized attempt to reach administrative tools...")
         return None
-    pass
+    
 
-def removeUser(cursor):
+def removeUser(cursor, user):
     '''
     removeUser
     
-    
+    Allows the user to disable their account from the database. Does not
+    remove 
+
+
     '''
     pass
 
-def editUser(cursor):
+def changePassword(cursor, user):
+    '''
+    changePassword
+    
+    Allows user to modify their password in the database.
+
+    '''
+    count = 0
+    while True:
+        print("\nEnter current password:")
+        curr_pass = input("\n>>> ")
+        curr_key = passKeyGenerator(curr_pass, cursor)
+        cursor.execute(f"SELECT passkey FROM customers WHERE username='{user.getUsername()}';")
+        for record in cursor:
+            user_key = record[0]
+        if curr_key != user_key:
+            if count >= 5:
+                print("5 incorrect password attempts. Returning to main menu...")
+                return None
+            print("Sorry, that password is incorrect, try again...")
+            count += 1
+            continue
+        else:
+            break
+    passkey = createPassword(cursor)
+    cursor.execute(f"UPDATE customers SET passkey = {passkey} WHERE username='{user.getUsername()}';")
+    
+def createPassword(cursor):
+    '''
+    createPassword
+    
+    Prompts user input to create a secure password.
+
+    Returns the generated passkey.
+    
+    '''
+    print("Great! Now choose a password. Enter 1 for password rules.\n")
+    while True:
+        password = input("\nPassword: ")
+        if password == "1":
+            rules = "\n\t- Should be at least 8 characters\n\t- Should contain at least 1 digit (0-9)\n\t- Should contain at least 1 special character (. * ` ~ ! @ # $ % ^ & - _ + ?)\n\t- Should not contain spaces\n"
+            print("\n\n" + "PASSWORD RULES".center(50,"*") + rules)
+        if len(password) < 8:
+            print("\nPassword must be at least 8 characters. Try again.\n")
+            continue
+        if re.search("\d", password) == None:
+            print("\nPassword must contain at least 1 digit (0-9). Try again.\n")
+            continue
+        if re.search("[.*`~!@#$%^&\-_+?]", password) == None:
+            print("\nPassword must contain at least 1 special character (. * ` ~ ! @ # $ % ^ & - _ + ?). Try again.\n")
+            continue
+        if re.search(" ", password) != None:
+            print("\nPassword must not contain spaces. Try again.\n")
+            continue
+        break
+    return passKeyGenerator(password, cursor)
+
+def editUser(cursor, user):
     '''
     editUser
 
 
     '''
+    
     pass
 
 def viewCatalog(cursor):

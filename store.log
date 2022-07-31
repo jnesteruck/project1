@@ -542,3 +542,27 @@
 2022-07-29 12:50:01,055 :: plugin_name: caching_sha2_password
 2022-07-29 12:50:01,058 :: AUTHENTICATION_PLUGIN_CLASS: MySQLCachingSHA2PasswordAuthPlugin
 2022-07-29 12:50:01,058 :: new_auth_plugin: caching_sha2_password
+2022-07-30 11:18:52,285 :: # _do_auth(): user: root
+2022-07-30 11:18:52,286 :: # _do_auth(): self._auth_plugin: 
+2022-07-30 11:18:52,287 :: # _do_auth(): user: root
+2022-07-30 11:18:52,288 :: # _do_auth(): password: r!0@GZIv@Y&!ZVLE
+2022-07-30 11:18:52,288 :: package: mysql.connector.plugins
+2022-07-30 11:18:52,289 :: plugin_name: caching_sha2_password
+2022-07-30 11:18:52,314 :: AUTHENTICATION_PLUGIN_CLASS: MySQLCachingSHA2PasswordAuthPlugin
+2022-07-30 11:18:52,315 :: new_auth_plugin: caching_sha2_password
+2022-07-30 11:19:02,185 :: # _do_auth(): user: root
+2022-07-30 11:19:02,185 :: # _do_auth(): self._auth_plugin: 
+2022-07-30 11:19:02,185 :: # _do_auth(): user: root
+2022-07-30 11:19:02,185 :: # _do_auth(): password: r!0@GZIv@Y&!ZVLE
+2022-07-30 11:19:02,186 :: package: mysql.connector.plugins
+2022-07-30 11:19:02,186 :: plugin_name: caching_sha2_password
+2022-07-30 11:19:02,188 :: AUTHENTICATION_PLUGIN_CLASS: MySQLCachingSHA2PasswordAuthPlugin
+2022-07-30 11:19:02,188 :: new_auth_plugin: caching_sha2_password
+2022-07-30 11:19:12,105 :: # _do_auth(): user: root
+2022-07-30 11:19:12,106 :: # _do_auth(): self._auth_plugin: 
+2022-07-30 11:19:12,106 :: # _do_auth(): user: root
+2022-07-30 11:19:12,106 :: # _do_auth(): password: r!0@GZIv@Y&!ZVLE
+2022-07-30 11:19:12,107 :: package: mysql.connector.plugins
+2022-07-30 11:19:12,107 :: plugin_name: caching_sha2_password
+2022-07-30 11:19:12,109 :: AUTHENTICATION_PLUGIN_CLASS: MySQLCachingSHA2PasswordAuthPlugin
+2022-07-30 11:19:12,110 :: new_auth_plugin: caching_sha2_password
