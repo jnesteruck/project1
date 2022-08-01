@@ -26,20 +26,24 @@ def main():
         logging.info("Fatal error occurred. Exiting program...")
         return
     
-    tf.fastPrint("".center(100, "-"), 2)
-    tf.slowPrint(" Welcome to the Music Store! ".center(100, "-"), 0.01)
-    tf.fastPrint("".center(100, "-"), 3)
+    # tf.fastPrint("".center(100, "-"), 2)
+    # tf.slowPrint(" Welcome to the Music Store! ".center(100, "-"), 0.01)
+    # tf.fastPrint("".center(100, "-"), 3)
     print("\nAre you a returning customer? (Y/N)")
     uchoice = input("\n>>> ").lower()
     if uchoice == "n":
         t_user = addUser(cursor)
     else:
         t_user = None
+    user = login(cursor, t_user)
+
+    options = {"0", "1", "2", "3", "4", "5", "6"}
+    omax = 6
+
     while True:
-        user = login(cursor, t_user)
+        if type(user) != User:
+            break
         username = user.getUsername()
-        options = {"0", "1", "2", "3", "4", "5", "6"}
-        omax = 6
         print("\nWhat would you like to do today?\n")
         print("\tView the catalog (1)")
         print("\tMake a purchase (2)")
@@ -68,7 +72,7 @@ def main():
         elif choice == "3":
             viewOrderHistory(cursor, user)
         elif choice == "4":
-            print("\nYour balance: $" + str(user.getBalance()) + "\n")
+            print(f"\nYour balance: ${round(user.getBalance(), 2)}\n")
         elif choice == "5":
             balance = user.addToBalance()
             cursor.execute(f"UPDATE customers SET balance = {balance} WHERE username = '{username}'")
@@ -92,11 +96,14 @@ def main():
                     admin_count += 1
     
     # Closing message
-    print()
-    tf.fastPrint("".center(200,"-"), 4)
-    tf.slowPrint(" Thank you for visiting the music store! Have a wonderful day! ".center(200,"-"), 0.005)
-    tf.fastPrint("".center(200,"-"), 4)
-    print()
+    if type(user) != User:
+        print()
+    else:
+        print()
+        tf.fastPrint("".center(200,"-"), 4)
+        tf.slowPrint(" Thank you for visiting the music store! Have a wonderful day! ".center(200,"-"), 0.005)
+        tf.fastPrint("".center(200,"-"), 5)
+        print()
 
 # TODO: NEEDS WORK
 def addOrder(user,cursor):
@@ -109,6 +116,7 @@ def addOrder(user,cursor):
     new_balance = user.changeBalance(total)
     cursor.execute(f"UPDATE customers SET balance = {new_balance} WHERE username = '{user.getUsername()}';")
 
+# TODO: NEEDS WORK
 def viewOrderHistory(cursor, user):
     '''
     viewOrderHistory
@@ -149,7 +157,6 @@ def addUser(cursor):
             continue
         break
     # password method
-    print("Great! Now choose a password. Enter 1 for password rules.\n")
     passkey = createPassword(cursor)
 
     # get the rest of the account info
@@ -168,7 +175,7 @@ def addUser(cursor):
 
     user = User(username, fname, lname, address, passkey, 0)
 
-    query = "INSERT INTO customers (username, firstName, lastName, address, passkey, balance, adminAccess) VALUES ('" + username + "', '" + fname + "', '" + lname + "', '" + address + "', " + passkey + ", 0, FALSE);"
+    query = f"INSERT INTO customers (username, firstName, lastName, address, passkey, balance, adminAccess) VALUES ('{username}', '{fname}', '{lname}', '{address}', {passkey}, 0, FALSE);"
     cursor.execute(query)
 
     return user
@@ -238,7 +245,7 @@ def formatAddress():
     street = input("\nAddress: ")
     print("\nPlease enter your city.\n")
     city = input("\nCity: ").capitalize()
-    print("\nPlease enter your state.\n")
+    print("\nPlease enter your state initials (e.g. New York = NY, Texas = TX, etc.).\n")
     state = input("\nState: ").capitalize()
     print("\nPlease enter your ZIP Code.\n")
     zip = input("\nZIP Code: ")
@@ -314,16 +321,17 @@ def createPassword(cursor):
         if password == "1":
             rules = "\n\t- Should be at least 8 characters\n\t- Should contain at least 1 digit (0-9)\n\t- Should contain at least 1 special character (. * ` ~ ! @ # $ % ^ & - _ + ?)\n\t- Should not contain spaces\n"
             print("\n\n" + "PASSWORD RULES".center(50,"*") + rules)
-        if len(password) < 8:
+            continue
+        elif len(password) < 8:
             print("\nPassword must be at least 8 characters. Try again.\n")
             continue
-        if re.search("\d", password) == None:
+        elif re.search("\d", password) == None:
             print("\nPassword must contain at least 1 digit (0-9). Try again.\n")
             continue
-        if re.search("[.*`~!@#$%^&\-_+?]", password) == None:
+        elif re.search("[.*`~!@#$%^&\-_+?]", password) == None:
             print("\nPassword must contain at least 1 special character (. * ` ~ ! @ # $ % ^ & - _ + ?). Try again.\n")
             continue
-        if re.search(" ", password) != None:
+        elif re.search(" ", password) != None:
             print("\nPassword must not contain spaces. Try again.\n")
             continue
         break
@@ -455,7 +463,7 @@ def login(cursor, user=None):
 
     Allows the user to enter their user information to log into their store account.
 
-    Returns str (username)
+    Returns user object
 
     '''
     if type(user) == User:
@@ -466,15 +474,18 @@ def login(cursor, user=None):
     while True:
         print("\nPlease enter your username.\n")
         username = input("\nUsername: ")
-        query = 'SELECT username, firstName, lastName, address, passKey, balance, adminAccess FROM customers WHERE username = "' + username + '";'
+        query = f'SELECT username, firstName, lastName, address, passKey, balance, adminAccess FROM customers WHERE username = "{username}";'
         cursor.execute(query)
         for record in cursor:
             _user = record
+            break
         
         key = int(_user[4])
         if ucount >= 5:
-            print("Couldn't find username after 5 attempts. Exiting program...")
-            break
+            tf.printNoLine("\nCouldn't find username after 5 attempts. Exiting program")
+            tf.slowPrint("...", 0.5)
+            logging.info("5 failed username attempts. Exiting program...")
+            return None
         if key == None:
             print("Sorry. Could not find username in system.")
             ucount += 1
@@ -484,16 +495,22 @@ def login(cursor, user=None):
             password = input("\nPassword: ")
             ckey = passKeyGenerator(password, cursor)
             if pcount >= 5:
-                print("\n5 Incorrect passsord attempts. Exiting program...")
+                tf.printNoLine("\n5 Incorrect passsord attempts. Exiting program")
+                tf.slowPrint("...", 0.5)
+                return None
             if ckey != key:
                 print("\nSorry, that password is incorrect. Please try again\n")
                 pcount += 1
             elif ckey == key:
-                print("Login successful. Welcome back!")
+                print("\nLogin successful.")
+                tf.pause(1)
+                print("Welcome back!\n")
                 if _user[6] == True:
                     user = User(_user[0], _user[1], _user[2], _user[3], _user[4], _user[5], True)
                 else:
                     user = User(_user[0], _user[1], _user[2], _user[3], _user[4], _user[5])
+                tf.pause(1)
+                os.system("cls")
                 return user
 
 def passKeyGenerator(password, cursor):
@@ -518,8 +535,6 @@ def passKeyGenerator(password, cursor):
             if re.search(f'{char}', record[1]) != None:
                 n2 += record[0]
     return n1 * n2
-
-
     
 if __name__ == "__main__":
     main()
