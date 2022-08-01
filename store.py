@@ -1,10 +1,14 @@
-from multiprocessing.sharedctypes import Value
-import mysql.connector
+import mysql.connector, re, os, logging
 import mysql_config as c
-import re
-import logging
+import textFormat as tf
 from product import Product
 from user import User
+
+# TODO:
+# - Create addOrder() function
+# - Create adminTools() function
+# - Create editUser() function
+# - Create removeUser() function
 
 def main():
 
@@ -22,14 +26,18 @@ def main():
         logging.info("Fatal error occurred. Exiting program...")
         return
     
-    print("\nWelcome to the Music Store!\n\nAre you a returning customer? (Y/N)")
+    tf.fastPrint("".center(100, "-"), 2)
+    tf.slowPrint(" Welcome to the Music Store! ".center(100, "-"), 0.01)
+    tf.fastPrint("".center(100, "-"), 3)
+    print("\nAre you a returning customer? (Y/N)")
     uchoice = input("\n>>> ").lower()
     if uchoice == "n":
-        user = addUser(cursor)
+        t_user = addUser(cursor)
     else:
-        user = None
+        t_user = None
     while True:
-        username = login(cursor, user)
+        user = login(cursor, t_user)
+        username = user.getUsername()
         options = {"0", "1", "2", "3", "4", "5", "6"}
         omax = 6
         print("\nWhat would you like to do today?\n")
@@ -46,10 +54,12 @@ def main():
             omax = 7
         else:
             print("\tQuit(0)\n")
-        choice = input("\nMake your selection: >>> ")
+        choice = input("\nMake your selection: ")
         if choice not in options:
             print(f"Please select a valid option (Enter a digit between 1 and {omax}")
         elif choice == "0":
+            os.system("cls")
+            print("\n")
             break
         elif choice == "1":
             viewCatalog(cursor)
@@ -80,13 +90,15 @@ def main():
                         break
                     print("\nSorry, that password is incorrect, try again...\n")
                     admin_count += 1
+    
+    # Closing message
+    print()
+    tf.fastPrint("".center(200,"-"), 4)
+    tf.slowPrint(" Thank you for visiting the music store! Have a wonderful day! ".center(200,"-"), 0.005)
+    tf.fastPrint("".center(200,"-"), 4)
+    print()
 
-
-            
-                
-            
-
-
+# TODO: NEEDS WORK
 def addOrder(user,cursor):
     '''
     addOrder
@@ -152,15 +164,7 @@ def addUser(cursor):
     
 
     # address (we'll get it via a process to ensure formatting)
-    print("\nPlease enter your street address. Do not include city, state, or ZIP Code information.\n")
-    street = input("\nAddress: ")
-    print("\nPlease enter your city.\n")
-    city = input("\nCity: ")
-    print("\nPlease enter your state. Enter '0' if not applicable.\n")
-    state = input("\nState: ")
-    print("\nPlease enter your ZIP Code.\n")
-    zip = input("\nZIP Code: ")
-    address = street + ", " + city + ", " + state + " " + zip
+    address = formatAddress()
 
     user = User(username, fname, lname, address, passkey, 0)
 
@@ -169,6 +173,7 @@ def addUser(cursor):
 
     return user
 
+# TODO: NEEDS WORK
 def adminTools(cursor, user):
     '''
     adminTools
@@ -180,17 +185,91 @@ def adminTools(cursor, user):
         logging.info("Unauthorized attempt to reach administrative tools...")
         return None
     
-
-def removeUser(cursor, user):
+def disableUser(cursor, user):
     '''
-    removeUser
+    disableUser
     
     Allows the user to disable their account from the database. Does not
-    remove 
+    remove all data. Removes name, address, passkey, and balance.
 
+    Returns True.
 
     '''
+    cursor.execute(f"UPDATE customers SET firstName = 'DISABLED' WHERE username = '{user.getUsername()}';")
+    user._fname = None
+    cursor.execute(f"UPDATE customers SET lastName = NULL WHERE username = '{user.getUsername()}';")
+    user._lname = None
+    cursor.execute(f"UPDATE customers SET address = NULL WHERE username = '{user.getUsername()}';")
+    user._address = None
+    cursor.execute(f"UPDATE customers SET passkey = NULL WHERE username = '{user.getUsername()}';")
+    user._passkey = None
+    cursor.execute(f"UPDATE customers SET balance = NULL WHERE username = '{user.getUsername()}';")
+    user._balance = None
     pass
+
+# TODO: NEEDS WORK
+def enableUser(cursor, user):
+    '''
+    enableUser
+    
+    Allows the user to reenable their account in the database after disabling.
+
+    '''
+    cursor.execute(f"UPDATE customers SET firstName = 'DISABLED' WHERE username = '{user.getUsername()}';")
+    user._fname = None
+    cursor.execute(f"UPDATE customers SET lastName = NULL WHERE username = '{user.getUsername()}';")
+    user._lname = None
+    cursor.execute(f"UPDATE customers SET address = NULL WHERE username = '{user.getUsername()}';")
+    user._address = None
+    cursor.execute(f"UPDATE customers SET passkey = NULL WHERE username = '{user.getUsername()}';")
+    user._passkey = None
+    cursor.execute(f"UPDATE customers SET balance = NULL WHERE username = '{user.getUsername()}';")
+    user._balance = None
+    pass
+
+def formatAddress():
+    '''
+    formatAddress
+    
+    Prompts user input to properly format their address for their record in the database
+    
+    '''
+    print("\nPlease enter your street address. Do not include city, state, or ZIP Code information.\n")
+    street = input("\nAddress: ")
+    print("\nPlease enter your city.\n")
+    city = input("\nCity: ").capitalize()
+    print("\nPlease enter your state.\n")
+    state = input("\nState: ").capitalize()
+    print("\nPlease enter your ZIP Code.\n")
+    zip = input("\nZIP Code: ")
+
+    return f"{street}, {city}, {state} {zip}"
+
+def changeName(cursor, user):
+    '''
+    changeName
+    
+    Prompts user input to change name in database.
+    
+    '''
+    print("\nPlease enter your first and last name. Please connect multiple last names using a dash (-).")
+    ninp = input("\nName: ").split(" ")
+    if len(ninp) == 1:
+        fname, lname = ninp[0], ""
+    else:
+        fname, lname = ninp[0], ninp[-1]
+    if [fname, lname] == user.getName():
+        pass
+    elif fname == user.getName(0):
+        user.setName(last=lname)
+        cursor.execute(f"UPDATE customers SET lastName = '{lname}' WHERE username='{user.getUsername()}';")
+    elif lname == user.getName(1):
+        user.setName(first=fname)
+        cursor.execute(f"UPDATE customers SET firstName = '{fname}' WHERE username='{user.getUsername()}';")
+    else:
+        user.setName(fname, lname)
+        cursor.execute(f"UPDATE customers SET firstName = '{fname}' WHERE username='{user.getUsername()}';")
+        cursor.execute(f"UPDATE customers SET lastName = '{lname}' WHERE username='{user.getUsername()}';")
 
 def changePassword(cursor, user):
     '''
@@ -201,12 +280,12 @@ def changePassword(cursor, user):
     '''
     count = 0
     while True:
-        print("\nEnter current password:")
+        print("\nEnter current password, or enter 'q' to quit:")
         curr_pass = input("\n>>> ")
+        if curr_pass.lower() in {'q', 'quit'}:
+            return None
         curr_key = passKeyGenerator(curr_pass, cursor)
-        cursor.execute(f"SELECT passkey FROM customers WHERE username='{user.getUsername()}';")
-        for record in cursor:
-            user_key = record[0]
+        user_key = user.getPasskey()
         if curr_key != user_key:
             if count >= 5:
                 print("5 incorrect password attempts. Returning to main menu...")
@@ -217,6 +296,7 @@ def changePassword(cursor, user):
         else:
             break
     passkey = createPassword(cursor)
+    user.setPasskey(passkey)
     cursor.execute(f"UPDATE customers SET passkey = {passkey} WHERE username='{user.getUsername()}';")
     
 def createPassword(cursor):
@@ -249,14 +329,55 @@ def createPassword(cursor):
         break
     return passKeyGenerator(password, cursor)
 
+# TODO: NEEDS WORK
 def editUser(cursor, user):
     '''
     editUser
 
-
+    Gives user access to their account settings.
     '''
-    
-    pass
+    while True:
+        print("\nPlease select an option from below:\n")
+        print("\tView Balance (1)")
+        print("\tAdd To Balance (2)")
+        print("\tChange Address (3)")
+        print("\tChange Name (4)")
+        print("\tChange Password (5)")
+        print("\tChange Username (6)")
+        print("\tDisable account (7)")
+        print("\tExit menu (0)")
+        choice = input("\n>>> ")
+
+        if choice == "0":
+            return None
+        elif choice == "1":
+            print("\nYour balance: $" + str(user.getBalance()) + "\n")
+        elif choice == "2":
+            balance = user.addToBalance()
+            cursor.execute(f"UPDATE customers SET balance = {balance} WHERE username='{user.getUsername()}';")
+        elif choice == "3":
+            user.setAddress(formatAddress())
+            cursor.execute(f"UPDATE customers SET address = '{user.getAddress()}' WHERE username='{user.getUsername()}';")
+        elif choice == "4":
+            changeName()
+        elif choice == "5":
+            changePassword()
+        elif choice == "6":
+            pass
+        elif choice == "7":
+            print("\nAre you sure you want to disable your account? This will remove personal data but\nwill not remove your username or order history. You can reactivate your account later.")
+            disable_choice = input("\nY/N: ").lower()
+            if disable_choice in {"n", "no"}:
+                disableUser(cursor, user)
+            elif disable_choice in {"y", "yes"}:
+                continue
+            else:
+                print("\nInvalid input. Returning to previous menu...")
+                logging.info("Invalid input. Returning to account settings menu...")
+                continue
+        else:
+            print("Please choose a valid option (0-7).")
+
 
 def viewCatalog(cursor):
     '''
@@ -339,18 +460,18 @@ def login(cursor, user=None):
     '''
     if type(user) == User:
         print("\nWelcome to the music store! Thank you for creating an account with us!\n")
-        return user.getUsername()
+        return user
     ucount = 0
     pcount = 0
     while True:
         print("\nPlease enter your username.\n")
         username = input("\nUsername: ")
-        query = 'SELECT * FROM customers WHERE username = "' + username + '";'
+        query = 'SELECT username, firstName, lastName, address, passKey, balance, adminAccess FROM customers WHERE username = "' + username + '";'
         cursor.execute(query)
         for record in cursor:
             _user = record
         
-        key = int(_user[3])
+        key = int(_user[4])
         if ucount >= 5:
             print("Couldn't find username after 5 attempts. Exiting program...")
             break
@@ -369,7 +490,10 @@ def login(cursor, user=None):
                 pcount += 1
             elif ckey == key:
                 print("Login successful. Welcome back!")
-                user = User(_user[0], _user[1], _user[2], _user[3], _user[4])
+                if _user[6] == True:
+                    user = User(_user[0], _user[1], _user[2], _user[3], _user[4], _user[5], True)
+                else:
+                    user = User(_user[0], _user[1], _user[2], _user[3], _user[4], _user[5])
                 return user
 
 def passKeyGenerator(password, cursor):

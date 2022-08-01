@@ -12,6 +12,24 @@ class User:
         self._balance = float(balance)
         self._admin = bool(admin)
     
+    # setters
+    def setUsername(self, user):
+        self._user = str(user)
+    
+    def setName(self, first=0, last=0):
+        if first != 0:
+            self._fname = str(first)
+        if last != 0:
+            self._lname = str(last)
+    
+    def setAddress(self, address):
+        self._address = str(address)
+        
+    def setPasskey(self, passkey):
+        self._passkey = int(passkey)
+
+    # getters
+
     def getUsername(self) -> str:
         '''
         getUsername
@@ -20,6 +38,20 @@ class User:
         
         '''
         return self._user
+
+    def getName(self, idx=None) -> list:
+        '''
+        getName
+        
+        Returns a list of two strings containing the user's first [0] and last [0] names.
+        
+        '''
+        if idx == 0:
+            return self._fname
+        elif idx == 1:
+            return self._lname
+        else:
+            return [self._fname, self._lname]
     
     def getBalance(self) -> float:
         '''
@@ -29,6 +61,15 @@ class User:
         
         '''
         return self._balance
+    
+    def getPasskey(self) -> int:
+        '''
+        getPasskey
+        
+        Returns the user's passkey (int)
+        
+        '''
+        return self._passkey
     
     def addToBalance(self):
         '''
