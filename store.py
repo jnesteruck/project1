@@ -39,6 +39,7 @@ def main():
 
     options = {"0", "1", "2", "3", "4", "5", "6"}
     omax = 6
+    cart = []
 
     while True:
         if type(user) != User:
@@ -63,12 +64,14 @@ def main():
             print(f"Please select a valid option (Enter a digit between 1 and {omax}")
         elif choice == "0":
             os.system("cls")
-            print("\n")
             break
         elif choice == "1":
             viewCatalog(cursor)
         elif choice == "2":
-            addOrder(user, cursor)
+            if cart == []:
+                cart = addOrder(user, cursor)
+            else:
+                cart = addOrder(user, cursor, cart)
         elif choice == "3":
             viewOrderHistory(cursor, user)
         elif choice == "4":
@@ -100,21 +103,126 @@ def main():
         print()
     else:
         print()
-        tf.fastPrint("".center(200,"-"), 4)
-        tf.slowPrint(" Thank you for visiting the music store! Have a wonderful day! ".center(200,"-"), 0.005)
         tf.fastPrint("".center(200,"-"), 5)
+        tf.fastPrint(" Thank you for visiting the music store! Have a wonderful day! ".center(200,"-"), 3, spd=0.02)
+        tf.fastPrint("".center(200,"-"), 7)
         print()
 
 # TODO: NEEDS WORK
-def addOrder(user,cursor):
+def addOrder(user,cursor, cart=[]):
     '''
     addOrder
 
+    Allows user to purchase products from the catalog using their account balance.
+
+    Returns cart if user has insufficient funds.
 
     '''
-    total = 0
-    new_balance = user.changeBalance(total)
+    viewed = viewCatalog(cursor)
+    if viewed == False:
+        return
+    while True:
+        while True:
+            print("\nWhat would you like to purchase today?\n\nEnter the Product ID for the product you want to purchase:\n")
+            try:
+                prod_id = int(input("\n>>> "))
+            except ValueError:
+                print("Please enter an appropriate Product ID.")
+                logging.info("User failed to enter an integer for Product ID...")
+                continue
+            cursor.execute("SELECT ProductID FROM catalog;")
+            id_list = []
+            for record in cursor:
+                id_list.append(record[0])
+            if prod_id not in id_list:
+                print("Please enter an appropriate Product ID.")
+                logging.info("User entered an unassigned Product ID...")
+                continue
+            else:
+                break
+        cursor.execute(f"SELECT * FROM catalog WHERE ProductID={prod_id};")
+        for record in cursor:
+            prod = Product(record[0], record[1], record[2], record[3], record[4], record[5], record[6])
+        if prod.getStock() == 0:
+            print("\nSorry, this product is out of stock. Please make a different selection.\n")
+            logging.info("User tried to buy a product that is out of stock...")
+            continue
+        if prod.getSalePrice() == 0:
+            t = "p"
+        else:
+            while True:
+                print("\nWill you be renting(R) or purchasing(P) today?\n")
+                t = input("\n>>> ").lower()
+                if len(t) != 1:
+                    t = t[0]
+                if t not in {"p", "r"}:
+                    print("Please select a valid option (R for renting, P for purchasing).")
+                    logging.info("Invalid user input for rental/purchase option...")
+                    continue
+                break
+        while True:
+            print(f"\nHow many {prod.getName()}s will you be getting?\n")
+            try:
+                quant = int(input("\n>>> "))
+                if quant < 0:
+                    raise Exception
+                else:
+                    break
+            except ValueError:
+                print("Please enter a valid integer.")
+                logging.info("Invalid user input. Did not enter a positive integer for quantity...")
+            except Exception:
+                print("Value must be greater than 0.")
+                logging.info("Invalid user input. Did not enter a positive value for quantity...")
+        
+        # add to cart
+        cart.append((prod, quant, t))
+        # clear terminal
+        os.system("cls")
+        
+        # print cart
+        print(" Your Cart ".center(100, "-"))
+        pstatement = f'{"Product Name".ljust(25)}| Quantity | Total Price'
+        print(f"\033[4m{pstatement}\033[0m")
+        total = 0
+        for elem in cart:
+            if elem[2] == "r":
+                price = elem[0].getRentalPrice()
+            elif elem[2] == "p":
+                price = elem[0].getSalePrice()
+            print(f"{elem[0].getName().ljust(25)}|{str(elem[1]).rjust(9)} | ${str(round(elem[1] * price, 2))}")
+            total += round(elem[1] * price, 2)
+        print(f'{"|".rjust(37)} ${total}')
+
+        while True:
+            print("\nWould you like to add anything else to your purchase (Y/N)?\n")
+            u_c = input("\n>>> ")
+            if u_c not in {"y", "n", "yes", "no"}:
+                print("\nPlease select a valid option (Y - yes, N - no).\n")
+                logging.info("Invalid user input. Did not enter (Y/N) for binary question...")
+                tf.pause(2)
+                continue
+            else:
+                break
+
+        if u_c in {"y", "yes"}:
+            continue
+        elif u_c in {"n", "no"}:
+            break
+    
+    new_balance = user.changeBalance(-total)
+    if new_balance == None:
+        print("You do not have sufficient funds in your balance to make this purchase. Please add funds and try again later.")
+        return cart
+    # start transaction
+    cursor.execute("START TRANSACTION;")
+    # change database inventory
+    for elem in cart:
+        cursor.execute(f"UPDATE catalog SET stock = ''")
+    # change user balance
     cursor.execute(f"UPDATE customers SET balance = {new_balance} WHERE username = '{user.getUsername()}';")
+    # commit changes
+    cursor.execute("COMMIT;")
 
 # TODO: NEEDS WORK
 def viewOrderHistory(cursor, user):
@@ -412,7 +520,7 @@ def viewCatalog(cursor):
 
     Displays the store catalog to the user. Can filter by Experience or Category.
 
-    Returns a bool. True if the catalog is viewed, False if the user quits.
+    Returns False if catalog is not viewed.
 
     '''
     print("Which catalog would you like to view?")
@@ -420,7 +528,7 @@ def viewCatalog(cursor):
     print("\tProfessional catalog (2)")
     print("\tAccessories (3)")
     print("\tEntire catalog (4)")
-    print("\nEnter any other input to quit")
+    print("\nEnter any other input to return to previous menu.")
     choice = input("\n>>> ")
     query = "SELECT * FROM catalog"
     if choice == "1":
@@ -434,13 +542,14 @@ def viewCatalog(cursor):
     else:
         return False
 
+
     print("\tBand catalog (1)")
     print("\tOrchestra catalog (2)")
     print("\tPercussion catalog (3)")
     print("\tElectronics catalog (4)")
     print("\tGuitar, Bass Guitar, Piano (5)")
     print("\tEntire catalog (6)")
-    print("\nEnter any other input to quit")
+    print("\nEnter any other input to return to previous menu.")
     choice2 = input("\n>>> ")
 
     if choice2 == "6":
@@ -467,14 +576,13 @@ def viewCatalog(cursor):
 
     print("")
 
-    print("Product Name".ljust(25) + "| Sale Price".ljust(12) + " | Rental Price".ljust(16))
-    print("|".rjust(26,"-") + "|".rjust(13,"-") + "---------------")
+    print(f'{"Product Name".ljust(25)}|  ID  | {"Sale Price".ljust(12)} | {"Rental Price".ljust(15)}')
+    print("|".rjust(26,"-") + "|".rjust(7,"-") + "|".rjust(15,"-") + "".center(15,"-"))
 
     for record in cursor:
-        product = Product(record[1], record[2], record[3], record[4], record[5], record[6])
-        print(product, "\n" + "|".rjust(26) + "|".rjust(13))
+        product = Product(record[0], record[1], record[2], record[3], record[4], record[5], record[6])
+        print(product, "\n" + "|".rjust(26) + "|".rjust(7) + "|".rjust(15))
     print("\n")
-    return True
 
 def login(cursor, user=None):
     '''
@@ -491,25 +599,23 @@ def login(cursor, user=None):
     ucount = 0
     pcount = 0
     while True:
+        if ucount >= 5:
+            tf.printNoLine("\nCouldn't find username after 5 attempts. Exiting program")
+            tf.slowPrint("...", 0.5)
+            logging.info("5 failed username attempts. Exiting program...")
+            return None
         print("\nPlease enter your username.\n")
         username = input("\nUsername: ")
         query = f'SELECT username, firstName, lastName, address, passKey, balance, adminAccess FROM customers WHERE username = "{username}";'
         cursor.execute(query)
         for record in cursor:
             _user = record
-            break
-        
-        key = int(_user[4])
-        if ucount >= 5:
-            tf.printNoLine("\nCouldn't find username after 5 attempts. Exiting program")
-            tf.slowPrint("...", 0.5)
-            logging.info("5 failed username attempts. Exiting program...")
-            return None
-        if key == None:
-            print("Sorry. Could not find username in system.")
+        if _user == ():
             ucount += 1
+            print(f"\nSorry. Could not find username in system. Please try again. {5 - ucount} attempt(s) remaining.\n")
             continue
         else:
+            key = int(_user[4])
             print("\nPlease enter your password.\n")
             password = input("\nPassword: ")
             ckey = passKeyGenerator(password, cursor)
@@ -518,8 +624,8 @@ def login(cursor, user=None):
                 tf.slowPrint("...", 0.5)
                 return None
             if ckey != key:
-                print("\nSorry, that password is incorrect. Please try again\n")
                 pcount += 1
+                print(f"\nSorry, that password is incorrect. Please try again. {5 - pcount} attempt(s) remaining.\n")
             elif ckey == key:
                 print("\nLogin successful.")
                 tf.pause(1)

@@ -1,5 +1,6 @@
 class Product:
-    def __init__(self, name, type1, type2, sprice, rprice, stock):
+    def __init__(self, id, name, type1, type2, sprice, rprice, stock):
+        self._id = int(id)
         self._name = str(name)
         self._type1 = str(type1)
         self._type2 = str(type2)
@@ -7,6 +8,14 @@ class Product:
         self._rprice = float(rprice)
         self._stock = int(stock)
     
+    def setId(self, id):
+        try:
+            i = int(id)
+        except ValueError as ve:
+            print("**ERROR. PRICE MUST BE A NUMBER...**")
+            return None
+        self._id = i
+
     def setName(self, name):
         self._name = str(name)
 
@@ -46,14 +55,26 @@ class Product:
     def getStock(self):
         return self._stock
     
+    def removeStock(self, num):
+        '''
+        removeStock
+        
+        Adjusts stock in inventory when products are purchased.
+        
+        '''
+        if num > self._stock:
+            return
+        self._stock -= num
+    
     def __str__(self):
         name = self._name
+        id = str(self._id).zfill(3)
         if self._type1 == "Pro":
             name += " (Pro)"
         if self._stock == 0:
-            return name.ljust(25) + "| " + f"\033[31m----- OUT OF STOCK -----\033[0m"
+            return f"{name.ljust(25)}|{id.rjust(6)}| \033[31m----- OUT OF STOCK -----\033[0m"
         else:
             if self._rprice == 0:
-                return name.ljust(25) + "| $" + str(self._sprice).rjust(6) + "    | Not Available To Rent"
+                return f"{name.ljust(25)}|{id.rjust(6)}|  ${str(self._sprice).rjust(6)}     | Not Available To Rent"
             else:
-                return name.ljust(25) + "| $" + str(self._sprice).rjust(6) + "    | $" + str(self._rprice)
+                return f"{name.ljust(25)}|{id.rjust(6)}|  ${str(self._sprice).rjust(6)}     | $ {str(self._rprice)}"

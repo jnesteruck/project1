@@ -14,7 +14,7 @@ def printNoLine(string):
 def pause(length):
     time.sleep(length)
 
-def fastPrint(string, speed):
+def fastPrint(string, speed, spd=0.01):
     i = 0
     while i < len(string):
         ct = 0
@@ -30,7 +30,7 @@ def fastPrint(string, speed):
                 break
             ct += 1
             i += 1
-        time.sleep(0.01)
+        time.sleep(spd)
     print()
 
 
