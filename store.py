@@ -175,8 +175,12 @@ def addUser(cursor):
 
     user = User(username, fname, lname, address, passkey, 0)
 
+    # start transaction
+    cursor.execute("START TRANSACTION;")
     query = f"INSERT INTO customers (username, firstName, lastName, address, passkey, balance, adminAccess) VALUES ('{username}', '{fname}', '{lname}', '{address}', {passkey}, 0, FALSE);"
     cursor.execute(query)
+    # commit changes
+    cursor.execute("COMMIT;")
 
     return user
 
@@ -202,6 +206,8 @@ def disableUser(cursor, user):
     Returns True.
 
     '''
+    # start transaction
+    cursor.execute("START TRANSACTION;")
     cursor.execute(f"UPDATE customers SET firstName = 'DISABLED' WHERE username = '{user.getUsername()}';")
     user._fname = None
     cursor.execute(f"UPDATE customers SET lastName = NULL WHERE username = '{user.getUsername()}';")
@@ -212,6 +218,8 @@ def disableUser(cursor, user):
     user._passkey = None
     cursor.execute(f"UPDATE customers SET balance = NULL WHERE username = '{user.getUsername()}';")
     user._balance = None
+    # commit changes
+    cursor.execute("COMMIT;")
     pass
 
 # TODO: NEEDS WORK
@@ -259,6 +267,9 @@ def changeName(cursor, user):
     Prompts user input to change name in database.
     
     '''
+    # start transaction
+    cursor.execute("START TRANSACTION;")
+
     print("\nPlease enter your first and last name. Please connect multiple last names using a dash (-).")
     ninp = input("\nName: ").split(" ")
     if len(ninp) == 1:
@@ -277,6 +288,9 @@ def changeName(cursor, user):
         user.setName(fname, lname)
         cursor.execute(f"UPDATE customers SET firstName = '{fname}' WHERE username='{user.getUsername()}';")
         cursor.execute(f"UPDATE customers SET lastName = '{lname}' WHERE username='{user.getUsername()}';")
+    
+    # commit changes
+    cursor.execute("COMMIT;")
 
 def changePassword(cursor, user):
     '''
@@ -304,7 +318,12 @@ def changePassword(cursor, user):
             break
     passkey = createPassword(cursor)
     user.setPasskey(passkey)
+
+    # start transaction
+    cursor.execute("START TRANSACTION;")
     cursor.execute(f"UPDATE customers SET passkey = {passkey} WHERE username='{user.getUsername()}';")
+    # commit changes
+    cursor.execute("COMMIT;")
     
 def createPassword(cursor):
     '''
