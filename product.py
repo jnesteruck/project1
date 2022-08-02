@@ -8,6 +8,7 @@ class Product:
         self._rprice = float(rprice)
         self._stock = int(stock)
     
+    # setters
     def setId(self, id):
         try:
             i = int(id)
@@ -43,6 +44,10 @@ class Product:
             return None
         self._stock = s
     
+    # getters
+    def getId(self):
+        return self._id
+
     def getName(self):
         return self._name
 

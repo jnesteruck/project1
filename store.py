@@ -80,6 +80,7 @@ def main():
             balance = user.addToBalance()
             cursor.execute(f"UPDATE customers SET balance = {balance} WHERE username = '{username}'")
         elif choice == "6":
+            os.system("cls")
             editUser(cursor, user)
         elif choice == "7":
             admin_count = 0
@@ -108,7 +109,6 @@ def main():
         tf.fastPrint("".center(200,"-"), 7)
         print()
 
-# TODO: NEEDS WORK
 def addOrder(user,cursor, cart=[]):
     '''
     addOrder
@@ -218,11 +218,12 @@ def addOrder(user,cursor, cart=[]):
     cursor.execute("START TRANSACTION;")
     # change database inventory
     for elem in cart:
-        cursor.execute(f"UPDATE catalog SET stock = ''")
+        cursor.execute(f"UPDATE catalog SET stock = {elem[0].getStock()} WHERE ProductID={elem[0].getId()};")
     # change user balance
     cursor.execute(f"UPDATE customers SET balance = {new_balance} WHERE username = '{user.getUsername()}';")
     # commit changes
     cursor.execute("COMMIT;")
+    return []
 
 # TODO: NEEDS WORK
 def viewOrderHistory(cursor, user):
@@ -257,7 +258,7 @@ def addUser(cursor):
         cursor.execute("SELECT username FROM customers;")
         in_use = False
         for record in cursor:
-            if record == username:
+            if record[0] == username:
                 in_use = True
                 break
         if in_use:
@@ -309,11 +310,17 @@ def disableUser(cursor, user):
     disableUser
     
     Allows the user to disable their account from the database. Does not
-    remove all data. Removes name, address, passkey, and balance.
+    remove all data. Removes name, address, and balance. Keeps username
+    and passkey for later reactivation. Admin accounts cannot be disabled
+    without removing admin access.
 
     Returns True.
 
     '''
+    if user.isAdmin():
+        print("Cannot disable admin account. Returning to menu...")
+        logging.info("User attempted to disable account without removing admin privileges...")
+        return
     # start transaction
     cursor.execute("START TRANSACTION;")
     cursor.execute(f"UPDATE customers SET firstName = 'DISABLED' WHERE username = '{user.getUsername()}';")
@@ -322,33 +329,56 @@ def disableUser(cursor, user):
     user._lname = None
     cursor.execute(f"UPDATE customers SET address = NULL WHERE username = '{user.getUsername()}';")
     user._address = None
-    cursor.execute(f"UPDATE customers SET passkey = NULL WHERE username = '{user.getUsername()}';")
-    user._passkey = None
     cursor.execute(f"UPDATE customers SET balance = NULL WHERE username = '{user.getUsername()}';")
     user._balance = None
     # commit changes
     cursor.execute("COMMIT;")
-    pass
 
-# TODO: NEEDS WORK
-def enableUser(cursor, user):
+def enableUser(cursor, username):
     '''
     enableUser
     
     Allows the user to reenable their account in the database after disabling.
 
     '''
-    cursor.execute(f"UPDATE customers SET firstName = 'DISABLED' WHERE username = '{user.getUsername()}';")
-    user._fname = None
-    cursor.execute(f"UPDATE customers SET lastName = NULL WHERE username = '{user.getUsername()}';")
-    user._lname = None
-    cursor.execute(f"UPDATE customers SET address = NULL WHERE username = '{user.getUsername()}';")
-    user._address = None
-    cursor.execute(f"UPDATE customers SET passkey = NULL WHERE username = '{user.getUsername()}';")
-    user._passkey = None
-    cursor.execute(f"UPDATE customers SET balance = NULL WHERE username = '{user.getUsername()}';")
-    user._balance = None
-    pass
+    cursor.execute(f"SELECT passkey FROM customers WHERE username='{username}';")
+    key = 0
+    for record in cursor:
+        key = record[0]
+    print("\nPlease enter your password:\n")
+    while True:
+        passw = input("\n>>> ")
+        if passw.lower() in {"q", "quit"}:
+            return
+        nkey = passKeyGenerator(passw, cursor)
+        if nkey != key:
+            print("\nSorry, that password is incorrect. Try again.\nIf you don't remember your password, you will need to contact an admin for help.\n")
+            print("Enter Q to quit.")
+            continue
+        else:
+            break
+    
+    # start transaction
+    cursor.execute("START TRANSACTION;")
+    # name
+    print("\nPlease enter your first and last name. Please connect multiple last names using a dash (-).")
+    ninp = input("\nName: ").split(" ")
+    if len(ninp) == 1:
+        fname, lname = ninp[0], ""
+    else:
+        fname, lname = ninp[0], ninp[-1]
+    cursor.execute(f"UPDATE customers SET firstName = '{fname}', lastName = '{lname}' WHERE username='{username}'")
+
+    # address (we'll get it via a process to ensure formatting)
+    address = formatAddress()
+    cursor.execute(f"UPDATE customers SET address = '{address}' WHERE username='{username}'")
+
+    user = User(username, fname, lname, address, nkey, 0)
+
+    # commit changes
+    cursor.execute("COMMIT;")
+
+    return user
 
 def formatAddress():
     '''
@@ -432,7 +462,53 @@ def changePassword(cursor, user):
     cursor.execute(f"UPDATE customers SET passkey = {passkey} WHERE username='{user.getUsername()}';")
     # commit changes
     cursor.execute("COMMIT;")
+
+def changeUsername(cursor, user):
+    '''
+    changeUsername
     
+    Allows user to modify their username in the database.
+
+    '''
+    # username loop
+    print("\nPlease choose a username.\n")
+    while True:
+        username = input("\nUsername: ")
+        cursor.execute("SELECT username FROM customers;")
+        in_use = False
+        for record in cursor:
+            if record[0] == username:
+                in_use = True
+                break
+        if in_use:
+            print("Sorry, that username is already in use. Please pick a different username.\n")
+            continue
+        break
+    count = 0
+    while True:
+        print("\nEnter current password, or enter 'q' to quit:")
+        curr_pass = input("\n>>> ")
+        if curr_pass.lower() in {'q', 'quit'}:
+            return None
+        curr_key = passKeyGenerator(curr_pass, cursor)
+        user_key = user.getPasskey()
+        if curr_key != user_key:
+            if count >= 5:
+                print("5 incorrect password attempts. Returning to main menu...")
+                return None
+            print("Sorry, that password is incorrect, try again...")
+            count += 1
+            continue
+        else:
+            break
+
+    # start transaction
+    cursor.execute("START TRANSACTION;")
+    cursor.execute(f"UPDATE customers SET username = {username} WHERE username='{user.getUsername()}';")
+    user.setUsername(username)
+    # commit changes
+    cursor.execute("COMMIT;")
+
 def createPassword(cursor):
     '''
     createPassword
@@ -464,7 +540,6 @@ def createPassword(cursor):
         break
     return passKeyGenerator(password, cursor)
 
-# TODO: NEEDS WORK
 def editUser(cursor, user):
     '''
     editUser
@@ -486,25 +561,38 @@ def editUser(cursor, user):
         if choice == "0":
             return None
         elif choice == "1":
+            # view balance
+            os.system("cls")
             print("\nYour balance: $" + str(user.getBalance()) + "\n")
+            tf.pause(2)
         elif choice == "2":
+            # add to  balance
             balance = user.addToBalance()
+            # start transaction
+            cursor.execute("START TRANSACTION;")
             cursor.execute(f"UPDATE customers SET balance = {balance} WHERE username='{user.getUsername()}';")
+            # commit changes
+            cursor.execute("COMMIT;")
         elif choice == "3":
+            # change address
             user.setAddress(formatAddress())
+            # start transaction
+            cursor.execute("START TRANSACTION;")
             cursor.execute(f"UPDATE customers SET address = '{user.getAddress()}' WHERE username='{user.getUsername()}';")
+            # commit changes
+            cursor.execute("COMMIT;")
         elif choice == "4":
             changeName()
         elif choice == "5":
             changePassword()
         elif choice == "6":
-            pass
+            changeUsername()
         elif choice == "7":
             print("\nAre you sure you want to disable your account? This will remove personal data but\nwill not remove your username or order history. You can reactivate your account later.")
             disable_choice = input("\nY/N: ").lower()
-            if disable_choice in {"n", "no"}:
+            if disable_choice in {"y", "yes"}:
                 disableUser(cursor, user)
-            elif disable_choice in {"y", "yes"}:
+            elif disable_choice in {"n", "no"}:
                 continue
             else:
                 print("\nInvalid input. Returning to previous menu...")
@@ -512,7 +600,8 @@ def editUser(cursor, user):
                 continue
         else:
             print("Please choose a valid option (0-7).")
-
+            logging.info("User entered invalid input...")
+            continue
 
 def viewCatalog(cursor):
     '''
@@ -615,6 +704,10 @@ def login(cursor, user=None):
             print(f"\nSorry. Could not find username in system. Please try again. {5 - ucount} attempt(s) remaining.\n")
             continue
         else:
+            if _user[1] == "DISABLED":
+                print("\nPlease reactivate your account.\n")
+                tf.pause(3)
+                enableUser(cursor, username)
             key = int(_user[4])
             print("\nPlease enter your password.\n")
             password = input("\nPassword: ")

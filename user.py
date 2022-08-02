@@ -71,17 +71,22 @@ class User:
         '''
         return self._passkey
     
-    def addToBalance(self):
+    def addToBalance(self) -> float:
         '''
         addToBalance
 
         Prompts user input to add to their account balance.
 
+        Returns user's balance (float)
+
         '''
         while True:
             print("\nHow much would you like to add to your balance?\n")
+            user_in = input("Enter an amount (USD): $")
+            if user_in in {"0", ""}:
+                return self._balance
             try:
-                amount = round(float(input("Enter an amount (USD): $")), 2)
+                amount = round(float(user_in, 2))
             except ValueError as ve:
                 print("Invalid currency format.")
                 logging.info("User failed to input a number in decimal format...")
