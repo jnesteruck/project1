@@ -71,6 +71,15 @@ class User:
         '''
         return self._passkey
     
+    def getAddress(self) -> str:
+        '''
+        getAddress
+        
+        Returns the user's address (str)
+        
+        '''
+        return self._address
+    
     def addToBalance(self) -> float:
         '''
         addToBalance
@@ -86,7 +95,7 @@ class User:
             if user_in in {"0", ""}:
                 return self._balance
             try:
-                amount = round(float(user_in, 2))
+                amount = round(float(user_in), 2)
             except ValueError as ve:
                 print("Invalid currency format.")
                 logging.info("User failed to input a number in decimal format...")

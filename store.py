@@ -1,8 +1,10 @@
+from tkinter import Y
 import mysql.connector, re, os, logging
 import mysql_config as c
 import textFormat as tf
 from product import Product
 from user import User
+from getpass import getpass
 
 # TODO:
 # - Create addOrder() function
@@ -25,11 +27,17 @@ def main():
         print("ERROR: Exiting program...")
         logging.info("Fatal error occurred. Exiting program...")
         return
-    
-    # tf.fastPrint("".center(100, "-"), 2)
-    # tf.slowPrint(" Welcome to the Music Store! ".center(100, "-"), 0.01)
-    # tf.fastPrint("".center(100, "-"), 3)
-    print("\nAre you a returning customer? (Y/N)")
+    clear()
+    fancy = False
+    if fancy:
+        tf.fastPrint("".center(200, "-"), 5)
+        print()
+        tf.fastPrint(" Welcome to the Music Store! ".center(200, "-"), 3, spd=0.02)
+        print()
+        tf.fastPrint("".center(200, "-"), 7)
+        tf.pause(2)
+        clear()
+    print("Are you a returning customer? (Y/N)")
     uchoice = input("\n>>> ").lower()
     while True:
         if uchoice in {"q", "quit"}:
@@ -47,7 +55,7 @@ def main():
             # check for invalid inputs
             print("\nInvalid input. Try again...\nEnter 'q' to quit")
             tf.pause(2)
-            os.system("cls")
+            clear()
             print("\nAre you a returning customer? (Y/N)")
             uchoice = input("\n>>> ").lower()
             continue
@@ -58,33 +66,35 @@ def main():
         user = login(cursor, t_user)
 
     # check that user chooses an option correctly
-    options = {"0", "1", "2", "3", "4", "5", "6"}
-    omax = 6
+    options = {"0", "1", "2", "3", "4", "5", "6", "7"}
+    omax = 7
     cart = []
 
     while True:
+        clear()
         if type(user) != User:
             break
         username = user.getUsername()
-        print("\nWhat would you like to do today?\n")
+        print("What would you like to do today?\n")
         print("\tView the catalog (1)")
         print("\tMake a purchase (2)")
-        print("\tView Order History (3)")
-        print("\tView account balance (4)")
-        print("\tAdd to account balance (5)")
-        print("\tAccount settings (6)")
+        print("\tReturn a rental (3)")
+        print("\tView Order History (4)")
+        print("\tView account balance (5)")
+        print("\tAdd to account balance (6)")
+        print("\tAccount settings (7)")
         if user.isAdmin():
-            print("\tAdmin Tools (7)")
+            print("\tAdmin Tools (8)")
             print("\tQuit (0)")
-            options.add("7")
-            omax = 7
+            options.add("8")
+            omax = 8
         else:
-            print("\tQuit(0)\n")
+            print("\tQuit (0)\n")
         choice = input("\nMake your selection: ")
         if choice not in options:
-            print(f"Please select a valid option (Enter a digit between 1 and {omax}")
-        elif choice == "0":
-            os.system("cls")
+            print(f"Please select a valid option (Enter a digit between 0 and {omax})")
+        elif choice.lower() in {"0", "q", "quit"}:
+            clear()
             break
         elif choice == "1":
             viewCatalog(cursor)
@@ -93,17 +103,24 @@ def main():
                 cart = addOrder(user, cursor)
             else:
                 cart = addOrder(user, cursor, cart)
-        elif choice == "3":
-            viewOrderHistory(cursor, user)
         elif choice == "4":
-            print(f"\nYour balance: ${round(user.getBalance(), 2)}\n")
+            viewOrderHistory(cursor, user)
         elif choice == "5":
-            balance = user.addToBalance()
-            cursor.execute(f"UPDATE customers SET balance = {balance} WHERE username = '{username}'")
+            # view balance
+            clear()
+            print(f"\nYour balance: ${'{:.2f}'.format(user.getBalance())}\n")
+            tf.pause(1)
+            input("\nPress enter to continue.\n")
         elif choice == "6":
-            os.system("cls")
-            editUser(cursor, user)
+            balance = user.addToBalance()
+            # start transaction
+            cursor.execute("START TRANSACTION;")
+            cursor.execute(f"UPDATE customers SET balance = {balance} WHERE username = '{username}'")
+            # commit changes
+            cursor.execute("COMMIT;")
         elif choice == "7":
+            editUser(cursor, user)
+        elif choice == "8":
             admin_count = 0
             while True:
                 print("\nPlease enter the admin password:\n")
@@ -119,16 +136,23 @@ def main():
                         break
                     print("\nSorry, that password is incorrect, try again...\n")
                     admin_count += 1
+                else:
+                    adminTools(cursor, user)
+                    break
     
     # Closing message
     if type(user) != User:
         print()
     else:
         print()
-        # tf.fastPrint("".center(200,"-"), 5)
-        # tf.fastPrint(" Thank you for visiting the music store! Have a wonderful day! ".center(200,"-"), 3, spd=0.02)
-        # tf.fastPrint("".center(200,"-"), 7)
-        # print()
+        if fancy:
+            tf.fastPrint("".center(200,"-"), 5)
+            print()
+            tf.fastPrint(" Thank you for visiting the music store! Have a wonderful day! ".center(200,"-"), 3, spd=0.02)
+            print()
+            tf.fastPrint("".center(200,"-"), 7)
+            tf.pause(3)
+            clear()
 
 def addOrder(user,cursor, cart=[]):
     '''
@@ -139,9 +163,15 @@ def addOrder(user,cursor, cart=[]):
     Returns cart if user has insufficient funds.
 
     '''
+    clear()
     viewed = viewCatalog(cursor)
     if viewed == False:
         return
+    if cart != []:
+        print("You currently have items in your cart. Would you like to continue with these items, or clear your cart?\nEnter C to clear the cart, enter anything else to continue.")
+        cart_choice = input("\n>>> ")
+        if cart_choice.lower() == "c":
+            cart = []
     while True:
         while True:
             print("\nWhat would you like to purchase today?\n\nEnter the Product ID for the product you want to purchase:\n")
@@ -199,7 +229,7 @@ def addOrder(user,cursor, cart=[]):
         # add to cart
         cart.append((prod, quant, t))
         # clear terminal
-        os.system("cls")
+        clear()
         
         # print cart
         print(" Your Cart ".center(100, "-"))
@@ -247,6 +277,17 @@ def addOrder(user,cursor, cart=[]):
     return []
 
 # TODO: NEEDS WORK
+def returnRental(user, cursor):
+    '''
+    returnRental
+    
+    Allows the user to return an item they have been renting from the store.
+    
+    '''
+    clear()
+    print()
+
+# TODO: NEEDS TESTING
 def viewOrderHistory(cursor, user):
     '''
     viewOrderHistory
@@ -264,7 +305,7 @@ def viewOrderHistory(cursor, user):
         orderHist.append(f'{str(record[0]).zfill(3).rjust(8)} | {str(record[1])} | ${round(record[2], 2)}')
     
     while True:
-        os.system("cls")
+        clear()
         print("")
         print(f'Order ID | {"Order Date/Time".ljust(19)} | Order Total\n{"".ljust(45, "-")}')
         for elem in orderHist:
@@ -293,8 +334,6 @@ def viewOrderHistory(cursor, user):
         tf.pause(3)
         input("\nPress enter to continue.")
         
-
-
 def addUser(cursor):
     '''
     addUser()
@@ -353,10 +392,54 @@ def adminTools(cursor, user):
     
     
     '''
+    # additional layer of security
     if not user.isAdmin():
         print("Sorry. You do not have administrative access.")
         logging.info("Unauthorized attempt to reach administrative tools...")
         return None
+    while True:
+        clear()
+        if type(user) != User:
+            break
+        options = {"1", "2", "3", "4", "5", "6", "0"}
+        print("--- ADMINISTRATOR MENU ---\n")
+        print("\tView All Orders (1)")
+        print("\tView All Users (2)")
+        print("\tAdd to catalog (3)")
+        print("\tEdit Users (4)")
+        print("\tPromote Users to Admin (5)")
+        print("\tDisable Users (6)")
+        print("\tExit to main menu (0)\n")
+        choice = input("\nMake your selection: ")
+        if choice not in options:
+            print(f"Please select a valid option (Enter a digit between 0 and 6)")
+        elif choice.lower() in {"0", "q", "quit"}:
+            clear()
+            break
+        elif choice == "1":
+            viewCatalog(cursor)
+        elif choice == "2":
+            if cart == []:
+                cart = addOrder(user, cursor)
+            else:
+                cart = addOrder(user, cursor, cart)
+        elif choice == "4":
+            viewOrderHistory(cursor, user)
+        elif choice == "5":
+            # view balance
+            clear()
+            print(f"\nYour balance: ${'{:.2f}'.format(user.getBalance())}\n")
+            tf.pause(1)
+            input("\nPress enter to continue.\n")
+        elif choice == "6":
+            balance = user.addToBalance()
+            # start transaction
+            cursor.execute("START TRANSACTION;")
+            cursor.execute(f"UPDATE customers SET balance = {balance} WHERE username = '{username}'")
+            # commit changes
+            cursor.execute("COMMIT;")
+        elif choice == "7":
+            editUser(cursor, user)
     
 def disableUser(cursor, user):
     '''
@@ -491,14 +574,16 @@ def changePassword(cursor, user):
 
     '''
     count = 0
+    clear()
+    print("\nEnter current password, or enter 'q' to quit:")
     while True:
-        print("\nEnter current password, or enter 'q' to quit:")
-        curr_pass = input("\n>>> ")
+        curr_pass = getpass("\n>>> ")
         if curr_pass.lower() in {'q', 'quit'}:
             return None
         curr_key = passKeyGenerator(curr_pass, cursor)
         user_key = user.getPasskey()
         if curr_key != user_key:
+            clear()
             if count >= 5:
                 print("5 incorrect password attempts. Returning to main menu...")
                 return None
@@ -523,10 +608,13 @@ def changeUsername(cursor, user):
     Allows user to modify their username in the database.
 
     '''
+    clear()
     # username loop
-    print("\nPlease choose a username.\n")
+    print("\nPlease choose a username, or enter 'q' to quit.\n")
     while True:
         username = input("\nUsername: ")
+        if username.lower() in {'q', 'quit'}:
+            return None
         cursor.execute("SELECT username FROM customers;")
         in_use = False
         for record in cursor:
@@ -534,13 +622,15 @@ def changeUsername(cursor, user):
                 in_use = True
                 break
         if in_use:
+            clear()
             print("Sorry, that username is already in use. Please pick a different username.\n")
             continue
         break
     count = 0
+    clear()
+    print("\nEnter current password, or enter 'q' to quit.\n")
     while True:
-        print("\nEnter current password, or enter 'q' to quit:")
-        curr_pass = input("\n>>> ")
+        curr_pass = getpass("\nPassword: ")
         if curr_pass.lower() in {'q', 'quit'}:
             return None
         curr_key = passKeyGenerator(curr_pass, cursor)
@@ -571,23 +661,29 @@ def createPassword(cursor):
     Returns the generated passkey.
     
     '''
+    clear()
     print("Great! Now choose a password. Enter 1 for password rules.\n")
     while True:
-        password = input("\nPassword: ")
+        password = getpass("\nPassword: ")
         if password == "1":
+            clear()
             rules = "\n\t- Should be at least 8 characters\n\t- Should contain at least 1 digit (0-9)\n\t- Should contain at least 1 special character (. * ` ~ ! @ # $ % ^ & - _ + ?)\n\t- Should not contain spaces\n"
             print("\n\n" + "PASSWORD RULES".center(50,"*") + rules)
             continue
         elif len(password) < 8:
+            clear()
             print("\nPassword must be at least 8 characters. Try again.\n")
             continue
         elif re.search("\d", password) == None:
+            clear()
             print("\nPassword must contain at least 1 digit (0-9). Try again.\n")
             continue
         elif re.search("[.*`~!@#$%^&\-_+?]", password) == None:
+            clear()
             print("\nPassword must contain at least 1 special character (. * ` ~ ! @ # $ % ^ & - _ + ?). Try again.\n")
             continue
         elif re.search(" ", password) != None:
+            clear()
             print("\nPassword must not contain spaces. Try again.\n")
             continue
         break
@@ -599,8 +695,9 @@ def editUser(cursor, user):
 
     Gives user access to their account settings.
     '''
+    clear()
     while True:
-        print("\nPlease select an option from below:\n")
+        print("Please select an option from below:\n")
         print("\tView Balance (1)")
         print("\tAdd To Balance (2)")
         print("\tChange Address (3)")
@@ -615,9 +712,10 @@ def editUser(cursor, user):
             return None
         elif choice == "1":
             # view balance
-            os.system("cls")
-            print("\nYour balance: $" + str(user.getBalance()) + "\n")
-            tf.pause(2)
+            clear()
+            print(f"\nYour balance: ${'{:.2f}'.format(user.getBalance())}\n")
+            tf.pause(1)
+            input("\nPress enter to continue.\n")
         elif choice == "2":
             # add to  balance
             balance = user.addToBalance()
@@ -665,11 +763,12 @@ def viewCatalog(cursor):
     Returns False if catalog is not viewed.
 
     '''
-    print("Which catalog would you like to view?")
+    clear()
+    print("Which catalog would you like to view?\n")
     print("\tStarter catalog (1)")
     print("\tProfessional catalog (2)")
     print("\tAccessories (3)")
-    print("\tEntire catalog (4)")
+    print("\tEntire catalog (0)")
     print("\nEnter any other input to return to previous menu.")
     choice = input("\n>>> ")
     query = "SELECT * FROM catalog"
@@ -679,25 +778,26 @@ def viewCatalog(cursor):
         query += " WHERE type1 = 'Pro'"
     elif choice == "3":
         query += " WHERE type1 = 'Accessories'"
-    elif choice == "4":
+    elif choice == "0":
         pass
     else:
         return False
 
-
+    clear()
+    print("Select a filter:\n")
     print("\tBand catalog (1)")
     print("\tOrchestra catalog (2)")
     print("\tPercussion catalog (3)")
     print("\tElectronics catalog (4)")
     print("\tGuitar, Bass Guitar, Piano (5)")
-    print("\tEntire catalog (6)")
+    print("\tEntire catalog (0)")
     print("\nEnter any other input to return to previous menu.")
     choice2 = input("\n>>> ")
 
-    if choice2 == "6":
+    if choice2 == "0":
         query += ";"
     else:
-        if choice == "4":
+        if choice == "0":
             query += " WHERE "
         else:
             query += " AND "
@@ -714,18 +814,20 @@ def viewCatalog(cursor):
         else:
             return False
 
+    clear()
     cursor.execute(query)
 
-    print("")
-
-    print(f'{"Product Name".ljust(25)}|  ID  | {"Sale Price".ljust(12)} | {"Rental Price".ljust(15)}')
-    print("|".rjust(26,"-") + "|".rjust(7,"-") + "|".rjust(15,"-") + "".center(15,"-"))
+    print(f'{"Product Name".ljust(25)}| ID  | Sale Price | {"Rental Price".ljust(15)}')
+    print("|".rjust(26,"-") + "|".rjust(6,"-") + "|".rjust(13,"-") + "".center(15,"-"))
 
     for record in cursor:
+        tf.pause(0.05)
         product = Product(record[0], record[1], record[2], record[3], record[4], record[5], record[6])
-        print(product, "\n" + "|".rjust(26) + "|".rjust(7) + "|".rjust(15))
+        print(product, "\n" + "|".rjust(26) + "|".rjust(6) + "|".rjust(13))
     print("\n")
-
+    tf.pause(5)
+    input("\nPress Enter to exit catalog.")
+    
 def login(cursor, user=None):
     '''
     login
@@ -735,26 +837,38 @@ def login(cursor, user=None):
     Returns user object
 
     '''
+    clear()
     if type(user) == User:
         print("\nWelcome to the music store! Thank you for creating an account with us!\n")
         return user
     ucount = 0
     pcount = 0
+    print("Please enter your username.\n")
     while True:
-        if ucount >= 5:
-            tf.printNoLine("\nCouldn't find username after 5 attempts. Exiting program")
+        if ucount > 5:
+            tf.pause(1)
+            print("Couldn't find username after 5 attempts.")
+            tf.pause(1)
+            tf.slowPrint("\nExiting program", 0.02)
+            tf.pause(1)
             tf.slowPrint("...", 0.5)
+            print()
             logging.info("5 failed username attempts. Exiting program...")
             return None
-        print("\nPlease enter your username.\n")
         username = input("\nUsername: ")
         query = f'SELECT username, firstName, lastName, address, passKey, balance, adminAccess FROM customers WHERE username = "{username}";'
         cursor.execute(query)
+        _user = None
         for record in cursor:
-            _user = record
-        if _user == ():
+            if record is None:
+                pass
+            else:
+                _user = record
+        if _user is None:
+            clear()
+            if ucount < 5:
+                print(f"Sorry. Could not find username in system. Please try again. {5 - ucount} attempt(s) remaining.\n")
             ucount += 1
-            print(f"\nSorry. Could not find username in system. Please try again. {5 - ucount} attempt(s) remaining.\n")
             continue
         else:
             if _user[1] == "DISABLED":
@@ -762,27 +876,35 @@ def login(cursor, user=None):
                 tf.pause(3)
                 enableUser(cursor, username)
             key = int(_user[4])
-            print("\nPlease enter your password.\n")
-            password = input("\nPassword: ")
-            ckey = passKeyGenerator(password, cursor)
-            if pcount >= 5:
-                tf.printNoLine("\n5 Incorrect passsord attempts. Exiting program")
-                tf.slowPrint("...", 0.5)
-                return None
-            if ckey != key:
-                pcount += 1
-                print(f"\nSorry, that password is incorrect. Please try again. {5 - pcount} attempt(s) remaining.\n")
-            elif ckey == key:
-                print("\nLogin successful.")
-                tf.pause(1)
-                print("Welcome back!\n")
-                if _user[6] == True:
-                    user = User(_user[0], _user[1], _user[2], _user[3], _user[4], _user[5], True)
-                else:
-                    user = User(_user[0], _user[1], _user[2], _user[3], _user[4], _user[5])
-                tf.pause(1)
-                os.system("cls")
-                return user
+            clear()
+            print("Please enter your password.\n")
+            while True:
+                password = getpass("\nPassword: ")
+                ckey = passKeyGenerator(password, cursor)
+                if pcount >= 5:
+                    tf.pause(1)
+                    print("5 Incorrect passsord attempts.")
+                    tf.pause(1)
+                    tf.slowPrint("\nExiting program", 0.02)
+                    tf.pause(1)
+                    tf.slowPrint("...", 0.5)
+                    print()
+                    return None
+                if ckey != key:
+                    clear()
+                    pcount += 1
+                    print(f"Sorry, that password is incorrect. Please try again. {6 - pcount} attempt(s) remaining.\n")
+                elif ckey == key:
+                    clear()
+                    print("Login successful.\n")
+                    tf.pause(1)
+                    print("Welcome back!\n")
+                    if _user[6] == True:
+                        user = User(_user[0], _user[1], _user[2], _user[3], _user[4], _user[5], True)
+                    else:
+                        user = User(_user[0], _user[1], _user[2], _user[3], _user[4], _user[5])
+                    tf.pause(1)
+                    return user
 
 def passKeyGenerator(password, cursor):
     '''
@@ -806,6 +928,9 @@ def passKeyGenerator(password, cursor):
             if re.search(f'{char}', record[1]) != None:
                 n2 += record[0]
     return n1 * n2
-    
+
+def clear():
+    os.system("cls")
+
 if __name__ == "__main__":
     main()

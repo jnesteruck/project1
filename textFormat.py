@@ -5,7 +5,6 @@ def slowPrint(string, speed):
         sys.stdout.write(char)
         sys.stdout.flush()
         time.sleep(speed)
-    print()
 
 def printNoLine(string):
     sys.stdout.write(string)
@@ -31,6 +30,4 @@ def fastPrint(string, speed, spd=0.01):
             ct += 1
             i += 1
         time.sleep(spd)
-    print()
-
 

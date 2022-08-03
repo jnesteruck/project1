@@ -77,9 +77,9 @@ class Product:
         if self._type1 == "Pro":
             name += " (Pro)"
         if self._stock == 0:
-            return f"{name.ljust(25)}|{id.rjust(6)}| \033[31m----- OUT OF STOCK -----\033[0m"
+            return f"{name.ljust(25)}|{id.rjust(4)} | \033[31m----- OUT OF STOCK -----\033[0m"
         else:
             if self._rprice == 0:
-                return f"{name.ljust(25)}|{id.rjust(6)}|  ${str(self._sprice).rjust(6)}     | Not Available To Rent"
+                return f"{name.ljust(25)}|{id.rjust(4)} |   ${'{:.2f}'.format(self._sprice).rjust(7)} | Not Available To Rent"
             else:
-                return f"{name.ljust(25)}|{id.rjust(6)}|  ${str(self._sprice).rjust(6)}     | $ {str(self._rprice)}"
+                return f"{name.ljust(25)}|{id.rjust(4)} |   ${'{:.2f}'.format(self._sprice).rjust(7)} | $ {'{:.2f}'.format(self._rprice)}"
