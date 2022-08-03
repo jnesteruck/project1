@@ -31,12 +31,33 @@ def main():
     # tf.fastPrint("".center(100, "-"), 3)
     print("\nAre you a returning customer? (Y/N)")
     uchoice = input("\n>>> ").lower()
-    if uchoice == "n":
-        t_user = addUser(cursor)
+    while True:
+        if uchoice in {"q", "quit"}:
+            t_user = 0
+            break
+        if uchoice in {"n", "no"}:
+            # send user to account creation process. Returns user object so new user doesn't have to log in again.
+            t_user = addUser(cursor)
+            break
+        elif uchoice in {"y", "yes"}:
+            # None will send user to typical login process
+            t_user = None
+            break
+        else:
+            # check for invalid inputs
+            print("\nInvalid input. Try again...\nEnter 'q' to quit")
+            tf.pause(2)
+            os.system("cls")
+            print("\nAre you a returning customer? (Y/N)")
+            uchoice = input("\n>>> ").lower()
+            continue
+    # login
+    if t_user == 0:
+        user = 0
     else:
-        t_user = None
-    user = login(cursor, t_user)
+        user = login(cursor, t_user)
 
+    # check that user chooses an option correctly
     options = {"0", "1", "2", "3", "4", "5", "6"}
     omax = 6
     cart = []
@@ -104,10 +125,10 @@ def main():
         print()
     else:
         print()
-        tf.fastPrint("".center(200,"-"), 5)
-        tf.fastPrint(" Thank you for visiting the music store! Have a wonderful day! ".center(200,"-"), 3, spd=0.02)
-        tf.fastPrint("".center(200,"-"), 7)
-        print()
+        # tf.fastPrint("".center(200,"-"), 5)
+        # tf.fastPrint(" Thank you for visiting the music store! Have a wonderful day! ".center(200,"-"), 3, spd=0.02)
+        # tf.fastPrint("".center(200,"-"), 7)
+        # print()
 
 def addOrder(user,cursor, cart=[]):
     '''
@@ -233,14 +254,46 @@ def viewOrderHistory(cursor, user):
     Allows user to view all orders they have made. Prints a table of their orders.
 
     '''
-    query = 'SELECT * FROM orders WHERE username = "' + user + '";'
+    query = 'WITH t1 AS (SELECT OrderID, productName AS Product, quantity, (quantity * salePrice) AS Total FROM itemsSold JOIN catalog ON itemsSold.ProductID=catalog.ProductID)'
+    query+= f'SELECT t1.OrderID, transactionTime, SUM(Total) FROM orders JOIN t1 ON t1.OrderID=orders.OrderID WHERE username="{user.getUsername()}" GROUP BY OrderID;'
     cursor.execute(query)
-    print("")
-    print("Order ID".ljust(9) + "| Order Date/Time\n------------------------------")
+    valid_ids = []
+    orderHist = []
     for record in cursor:
-        print((str(record[0]) + " ").rjust(9) + "| " + str(record[2]))
+        valid_ids.append(record[0])
+        orderHist.append(f'{str(record[0]).zfill(3).rjust(8)} | {str(record[1])} | ${round(record[2], 2)}')
     
-    print("\n--- END OF ORDER HISTORY ---\n")
+    while True:
+        os.system("cls")
+        print("")
+        print(f'Order ID | {"Order Date/Time".ljust(19)} | Order Total\n{"".ljust(45, "-")}')
+        for elem in orderHist:
+            print(elem)
+        print(f"\n{' END OF ORDER HISTORY '.center(44, '-')}-\n")
+        print("\nEnter an Order ID to view order details, or press enter to exit to the main menu.")
+        id_in = input("\n>>> ")
+        if id_in.isnumeric():
+            id = int(id_in)
+        else:
+            break
+        cursor.execute(f'SELECT * FROM itemsSold JOIN catalog ON itemsSold.ProductID=catalog.ProductID WHERE OrderID={id};')
+        for record in cursor:
+            if record is None:
+                empty = True
+            else:
+                empty = False
+        if id not in valid_ids or empty:
+            print("\nNo such order in your history...\n")
+        else:
+            cursor.execute(f'SELECT productName AS Product, quantity, (quantity * salePrice) AS Total FROM itemsSold JOIN catalog ON itemsSold.ProductID=catalog.ProductID WHERE OrderID={id};')
+            print(f'{"Product".ljust(25)} | Quantity | Price\n{"".ljust(50, "-")}')
+
+            for record in cursor:
+                print(f'{record[0].ljust(25)} | {str(record[1]).rjust(8)} | ${round(record[2], 2)}')
+        tf.pause(3)
+        input("\nPress enter to continue.")
+        
+
 
 def addUser(cursor):
     '''
