@@ -397,8 +397,8 @@ def adminTools(cursor, user):
         print("Sorry. You do not have administrative access.")
         logging.info("Unauthorized attempt to reach administrative tools...")
         return None
+    clear()
     while True:
-        clear()
         if type(user) != User:
             break
         options = {"1", "2", "3", "4", "5", "6", "0"}
@@ -411,35 +411,80 @@ def adminTools(cursor, user):
         print("\tDisable Users (6)")
         print("\tExit to main menu (0)\n")
         choice = input("\nMake your selection: ")
-        if choice not in options:
-            print(f"Please select a valid option (Enter a digit between 0 and 6)")
-        elif choice.lower() in {"0", "q", "quit"}:
+
+        if choice.lower() in {"0", "q", "quit"}:
             clear()
             break
         elif choice == "1":
-            viewCatalog(cursor)
-        elif choice == "2":
-            if cart == []:
-                cart = addOrder(user, cursor)
-            else:
-                cart = addOrder(user, cursor, cart)
-        elif choice == "4":
-            viewOrderHistory(cursor, user)
-        elif choice == "5":
-            # view balance
+            # view all orders
             clear()
-            print(f"\nYour balance: ${'{:.2f}'.format(user.getBalance())}\n")
-            tf.pause(1)
-            input("\nPress enter to continue.\n")
+            cursor.execute("SELECT * FROM orders;")
+            for record in cursor:
+                print(f'{str(record[0]).rjust(3)} | {record[1].ljust(20)} | {record[2]}')
+            input("\nPress enter to continue.")
+            clear()
+        elif choice == "2":
+            # view all users
+            clear()
+            print(f"{'Username'.ljust(26)}| {'Name'.ljust(29)}| {'Address'.ljust(40)}| Account Balance")
+            cursor.execute("SELECT username, firstName, lastName, address, balance FROM customers;")
+            for record in cursor:
+                name = record[1] + " " + record[2]
+                print(f"{record[0].ljust(26)}| {name.ljust(29)}| {record[3].ljust(40)}| ${'{:.2f}'.format(record[4])}")
+        elif choice == "3":
+            # add item to catalog
+            pass
+        elif choice == "4":
+            # edit user info
+            pass
+        elif choice == "5":
+            # promote user to admin
+            pass
         elif choice == "6":
-            balance = user.addToBalance()
-            # start transaction
-            cursor.execute("START TRANSACTION;")
-            cursor.execute(f"UPDATE customers SET balance = {balance} WHERE username = '{username}'")
-            # commit changes
-            cursor.execute("COMMIT;")
-        elif choice == "7":
-            editUser(cursor, user)
+            #disable user
+            t = False
+            print("\nEnter the username for the user you want to disable:")
+            d_usern = input("\n>>> ")
+            cursor.execute(f"SELECT firstName, lastName, address, passkey, balance, adminAccess FROM customers WHERE username='{d_usern}'")
+            for record in cursor:
+                if record is None:
+                    pass
+                elif record[0] == 'DISABLED':
+                    print("This user has already been disabled. Returning to menu...")
+                    t = True
+                elif record[5] == True:
+                    print("Can't disable an admin account. Returning to menu...")
+                    t = True
+                else:
+                    d_user = User(d_usern, record[0], record[1], record[2], record[3], record[4], record[5])
+                    break
+            if t:
+                tf.pause(2)
+                clear()
+                continue
+            clear()
+            print("User to be disabled:")
+            tf.pause(0.5)
+            print(d_user)
+            tf.pause(2)
+            while True:
+                clear()
+                print(d_user)
+                print("\nAre you sure you want to disable this user? (Y/N)")
+                achoice = input("\n>>> ").lower()
+                if achoice in {"y", "yes"}:
+                    disableUser(cursor, d_user)
+                    break
+                elif achoice in {"n", "no"}:
+                    clear()
+                    break
+                else:
+                    clear()
+                    print("Please select a valid option (Y - yes, N - no).")
+                    continue
+
+        else:
+            print("Please select a valid option (Enter a digit between 0 and 6).")
     
 def disableUser(cursor, user):
     '''
