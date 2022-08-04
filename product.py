@@ -50,6 +50,12 @@ class Product:
 
     def getName(self):
         return self._name
+    
+    def getType1(self):
+        return self._type1
+
+    def getType2(self):
+        return self._type2
 
     def getSalePrice(self):
         return self._sprice

@@ -1,4 +1,4 @@
-import logging
+import logging, os
 
 logging.basicConfig(filename="store.log", level=logging.DEBUG, format='%(asctime)s :: %(message)s')
 
@@ -90,22 +90,30 @@ class User:
 
         '''
         while True:
-            print("\nHow much would you like to add to your balance?\n")
+            print("\nHow much would you like to add to your balance? (Enter 'q' to quit)\n")
             user_in = input("Enter an amount (USD): $")
-            if user_in in {"0", ""}:
+            if user_in.lower() in {"0", "", "q", "quit"}:
                 return self._balance
             try:
                 amount = round(float(user_in), 2)
             except ValueError as ve:
                 print("Invalid currency format.")
                 logging.info("User failed to input a number in decimal format...")
-            print(f"\nYou would like to add ${amount} to your balance? Confirm Y/N.")
-            confirm = input("\n>>> ").lower()
-            if confirm in {"n", "no"}:
-                continue
-            if type(amount) == float:
-                self._balance += amount
-                return self._balance
+            while True:
+                os.system("cls")
+                print(f"\nAdd ${'{:.2f}'.format(amount)} to your balance? Confirm Y/N.")
+                confirm = input("\n>>> ").lower()
+                if confirm in {"n", "no"}:
+                    break
+                elif confirm in {"y", "yes"}:
+                    pass
+                else:
+                    print("Please make a valid selection (Y - yes, N - no).")
+                    logging.info("User entered invalid input for binary selection (Y/N)...")
+                    continue
+                if type(amount) == float:
+                    self._balance += amount
+                    return self._balance
     
     def changeBalance(self, amt):
         '''

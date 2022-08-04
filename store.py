@@ -5,6 +5,7 @@ import textFormat as tf
 from product import Product
 from user import User
 from getpass import getpass
+import datetime
 
 # TODO:
 # - Create addOrder() function
@@ -14,6 +15,7 @@ from getpass import getpass
 
 yes = {"y", "yes"}
 no = {"n", "no"}
+fancy = False
 
 def main():
 
@@ -24,6 +26,7 @@ def main():
         cursor = cnx.cursor()
     except mysql.connector.Error as mce:
         print(mce.msg)
+        logging.info(mce.msg)
         logging.info("Database error occurred. Exiting program...")
         return
     except Exception as e:
@@ -31,7 +34,6 @@ def main():
         logging.info("Fatal error occurred. Exiting program...")
         return
     clear()
-    fancy = False
     if fancy:
         tf.fastPrint("".center(200, "-"), 5)
         print()
@@ -46,11 +48,11 @@ def main():
         if uchoice in {"q", "quit"}:
             t_user = 0
             break
-        if uchoice in no:
+        elif uchoice in no:
             # send user to account creation process. Returns user object so new user doesn't have to log in again.
             t_user = addUser(cursor)
             break
-        elif uchoice in yes:
+        elif uchoice in yes or uchoice == 'admin':
             # None will send user to typical login process
             t_user = None
             break
@@ -115,19 +117,22 @@ def main():
             tf.pause(1)
             input("\nPress enter to continue.\n")
         elif choice == "6":
+            clear()
             balance = user.addToBalance()
             # start transaction
             cursor.execute("START TRANSACTION;")
             cursor.execute(f"UPDATE customers SET balance = {balance} WHERE username = '{username}'")
             # commit changes
             cursor.execute("COMMIT;")
+            tf.pause(2)
         elif choice == "7":
             editUser(cursor, user)
         elif choice == "8":
             admin_count = 0
             while True:
-                print("\nPlease enter the admin password:\n")
-                userpass = input("\nPassword: ")
+                clear()
+                print("Please enter the admin password:\n")
+                userpass = getpass("\nPassword: ")
                 userkey = passKeyGenerator(userpass, cursor)
                 cursor.execute(f"SELECT passkey FROM customers WHERE username = 'admin'")
                 for record in cursor:
@@ -143,6 +148,8 @@ def main():
                     adminTools(cursor, user)
                     break
     
+    cursor.close()
+    cnx.close()
     # Closing message
     if type(user) != User:
         print()
@@ -166,16 +173,16 @@ def addOrder(user,cursor, cart=[]):
     Returns cart if user has insufficient funds.
 
     '''
-    clear()
-    viewed = viewCatalog(cursor)
-    if viewed == False:
-        return
     if cart != []:
         print("You currently have items in your cart. Would you like to continue with these items, or clear your cart?\nEnter C to clear the cart, enter anything else to continue.")
         cart_choice = input("\n>>> ")
         if cart_choice.lower() == "c":
             cart = []
     while True:
+        clear()
+        viewed = viewCatalog(cursor)
+        if viewed == False:
+            break
         while True:
             print("\nWhat would you like to purchase today?\n\nEnter the Product ID for the product you want to purchase:\n")
             try:
@@ -201,7 +208,7 @@ def addOrder(user,cursor, cart=[]):
             print("\nSorry, this product is out of stock. Please make a different selection.\n")
             logging.info("User tried to buy a product that is out of stock...")
             continue
-        if prod.getSalePrice() == 0:
+        if prod.getRentalPrice() == 0:
             t = "p"
         else:
             while True:
@@ -215,7 +222,11 @@ def addOrder(user,cursor, cart=[]):
                     continue
                 break
         while True:
-            print(f"\nHow many {prod.getName()}s will you be getting?\n")
+            if prod.getName()[-1] == "s":
+                n = prod.getName()[0:-1]
+            else:
+                n = prod.getName()
+            print(f"\nHow many {n}s will you be getting?\n")
             try:
                 quant = int(input("\n>>> "))
                 if quant < 0:
@@ -225,11 +236,14 @@ def addOrder(user,cursor, cart=[]):
             except ValueError:
                 print("Please enter a valid integer.")
                 logging.info("Invalid user input. Did not enter a positive integer for quantity...")
+                continue
             except Exception:
                 print("Value must be greater than 0.")
                 logging.info("Invalid user input. Did not enter a positive value for quantity...")
+                continue
         
         # add to cart
+        prod.setStock(prod.getStock() - 1)
         cart.append((prod, quant, t))
         # clear terminal
         clear()
@@ -251,7 +265,7 @@ def addOrder(user,cursor, cart=[]):
         while True:
             print("\nWould you like to add anything else to your purchase (Y/N)?\n")
             u_c = input("\n>>> ")
-            if u_c not in {"y", "n", "yes", "no"}:
+            if u_c not in yes and u_c not in no:
                 print("\nPlease select a valid option (Y - yes, N - no).\n")
                 logging.info("Invalid user input. Did not enter (Y/N) for binary question...")
                 tf.pause(2)
@@ -264,22 +278,44 @@ def addOrder(user,cursor, cart=[]):
         elif u_c in no:
             break
     
+    # if user quits out of the catalog without viewing it or putting items in their cart, they will return to main menu
+    if cart == []:
+        return cart
+
     new_balance = user.changeBalance(-total)
     if new_balance == None:
         print("You do not have sufficient funds in your balance to make this purchase. Please add funds and try again later.")
         return cart
     # start transaction
+    o_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute("START TRANSACTION;")
     # change database inventory
-    for elem in cart:
-        cursor.execute(f"UPDATE catalog SET stock = {elem[0].getStock()} WHERE ProductID={elem[0].getId()};")
-    # change user balance
-    cursor.execute(f"UPDATE customers SET balance = {new_balance} WHERE username = '{user.getUsername()}';")
+    try:
+        cursor.execute(f"INSERT INTO orders (username, transactionTime) VALUES ('{user.getUsername()}', '{o_time}')")
+        cursor.execute(f"SELECT orderID FROM orders WHERE username='{user.getUsername()}' AND transactionTime='{o_time}'")
+        o_id = None
+        for record in cursor:
+            if record is None:
+                print("Fatal Error. Returning to menu...")
+                logging.info("Order not detected. Order aborted. Returning to menu...")
+                tf.pause(2)
+                return []
+            else:
+                o_id = record[0]
+        for elem in cart:
+            cursor.execute(f"INSERT INTO itemsSold (OrderID, ProductID, quantity) VALUES ({o_id}, {elem[0].getId()}, {elem[1]});")
+            cursor.execute(f"UPDATE catalog SET stock = {elem[0].getStock()} WHERE ProductID={elem[0].getId()};")
+        # change user balance
+        cursor.execute(f"UPDATE customers SET balance = {new_balance} WHERE username = '{user.getUsername()}';")
+    except mysql.connector.Error as mce:
+        print(mce.msg)
+        logging.info(mce.msg)
+        tf.pause(3)
+        return cart
     # commit changes
     cursor.execute("COMMIT;")
     return []
 
-# TODO: NEEDS WORK
 def returnRental(user, cursor):
     '''
     returnRental
@@ -287,8 +323,71 @@ def returnRental(user, cursor):
     Allows the user to return an item they have been renting from the store.
     
     '''
-    clear()
-    print()
+    while True:
+        clear()
+        print("Please enter your Unit ID below. Enter 'q' to quit.")
+        u_in = input("\nUnit ID: ")
+        if u_in.lower() in {'q', 'quit'}:
+            return
+        try:
+            uID = int(u_in)
+            break
+        except ValueError:
+            print("Unit ID must be an integer. Try again...")
+            logging.info("User tried to input a non-integer for Unit ID...")
+            tf.pause(2)
+            continue
+        except Exception:
+            print("Unknown error. Try again...")
+            logging.info("Unknown error...")
+            tf.pause(2)
+            continue
+    cursor.execute(f"SELECT productID, quantity FROM itemsSold WHERE UnitID={uID};")
+    pID = None
+    for record in cursor:
+        if record is None:
+            pass
+        else:
+            pID = record[0]
+            q = record[1]
+            break
+    if pID is None:
+        print("No such Unit ID. Try again...")
+        logging.info("User entered invalid Unit ID. Returning to menu...")
+        tf.pause(2)
+        return
+    cursor.execute(f"SELECT productName, stock FROM catalog WHERE ProductID={pID};")
+    pname = None
+    for record in cursor:
+        if record is None:
+            pass
+        else:
+            pname = record[0]
+            pstock = record[1]
+            break
+    if pname is None:
+        print("No such product. Try again...")
+        logging.info("User entered invalid Product ID. Returning to menu...")
+        tf.pause(2)
+        return
+    if q > 1 and pname[-1] == 's':
+        prod_str = str(q) + pname
+    elif q > 1:
+        prod_str = str(q) + pname + 's'
+    elif q == 1:
+        prod_str = pname
+
+    stock = pstock + q
+    print(f"Thank you, {user.getName(0)}, for returning your {prod_str}!")
+    tf.pause(2)
+    print("We hope you have a wonderful day!")
+    # start transaction
+    cursor.execute("START TRANSACTION;")
+    # update stock inventory
+    cursor.execute(f"UPDATE catalog SET stock = {stock} WHERE ProductID={pID};")
+    # commit changes
+    cursor.execute("COMMIT;")
+    tf.pause(2)
 
 # TODO: NEEDS TESTING
 def viewOrderHistory(cursor, user):
@@ -334,8 +433,9 @@ def viewOrderHistory(cursor, user):
 
             for record in cursor:
                 print(f'{record[0].ljust(25)} | {str(record[1]).rjust(8)} | ${round(record[2], 2)}')
-        tf.pause(3)
+        tf.pause(1)
         input("\nPress enter to continue.")
+        logging.info("User succesfully viewed order history...")
         
 def addUser(cursor):
     '''
@@ -388,11 +488,198 @@ def addUser(cursor):
 
     return user
 
+def addItem(cursor):
+    '''
+    addItem
+    
+    *ONLY ACCESSIBLE BY ADMIN*
+    Allows user to add additional products to the catalog.
+    
+    '''
+    items = []
+    i = 0
+    # add item to catalog
+    while True:
+        clear()
+        # item name
+        print("What item are you adding?")
+        item_name = input("\n>>> ")
+        clear()
+        # item category
+        print("What type of item is this?\n")
+        print("\t(e.g. Band, Orchestra, Electronics, Percussion, etc.)")
+        item_t2 = input("\n>>> ")
+        # item experience level
+        while True:
+            print("\nWhat experience level is this item geared for? Choose from below.\n")
+            print("\tStarter (1)")
+            print("\tProfessional (2)")
+            print("\tN/A (For accessory items) (3)")
+            u_in1 = input("\n>>> ")
+            if u_in1 == "1":
+                item_t1 = "Starter"
+            elif u_in1 == "2":
+                item_t1 = "Pro"
+            elif u_in1 == "3":
+                item_t1 = "Accessories"
+            else:
+                print("Please select a valid option (1, 2, or 3).")
+                logging.info("Admin input improper selection...")
+                continue
+            break
+        # item price(s)
+        while True:
+            clear()
+            s = False
+            print("\nWhat is the sale price of this item?")
+            u_in = input("\n>>> ")
+            for elem in u_in.split("."):
+                if not elem.isnumeric():
+                    print("ERROR: Input must be numeric.") #print statement
+                    logging.info("Invalid user input. Did not enter a numeric value for price...") # log this error
+                    s = True
+                    break
+            if s:
+                tf.pause(1.5) # pause for a bit
+                continue
+            item_sprice = float(u_in)
+            break
+        while True:
+            clear()
+            print("Will this item be available to rent? (Y/N)")
+            achoice = input("\n>>> ").lower()
+            if achoice in yes:
+                while True:
+                    r = False
+                    clear()
+                    print("What is the rental price (per month) of this item?")
+                    u_in2 = input("\n>>> ")
+                    for elem in u_in2.split("."):
+                        if not elem.isnumeric():
+                            print("ERROR: Input must be numeric.") #print statement
+                            logging.info("Invalid user input. Did not enter a numeric value for price...") # log this error
+                            r = True
+                    if r:
+                        tf.pause(1.5) # pause for a bit
+                        continue
+                    item_rprice = float(u_in2)
+                    break
+                break
+            elif achoice in no:
+                item_rprice = 0
+                break
+            else:
+                print("\nPlease select a valid option (Y - yes, N - no).")
+                logging.info("Admin entered invalid input for binary (Y/N) selection...")
+                continue
+        # item stock
+        while True:
+            clear()
+            print("How much of this item will be in stock?")
+            u_in3 = input("\n>>> ")
+            if not u_in3.isnumeric():
+                print("ERROR: Input must be numeric.") #print statement
+                logging.info("Invalid user input. Did not enter an integer value for stock availablity...") # log this error
+                continue
+            item_stock = int(u_in3)
+            break
+        product = Product(i, item_name, item_t1, item_t2, item_sprice, item_rprice, item_stock)
+        items.append(product)
+        i += 1
+        while True:
+            clear()
+            print("Would you like to add any other items to the catalog? (Y/N)")
+            choice = input("\n>>> ")
+            if choice in yes:
+                t = False
+            elif choice in no:
+                t = True
+            else:
+                print("\nPlease select a valid option (Y - yes, N - no).")
+                logging.info("Admin entered invalid input for binary (Y/N) selection...")
+                continue
+            break
+        if t:
+            break
+
+    # start transaction
+    cursor.execute("START TRANSACTION;")
+    # build query from items list
+    query = "INSERT INTO catalog (productName, type1, type2, salePrice, rentalPrice, stock) VALUES"
+    for prod in items:
+        query += f"('{prod.getName()}', '{prod.getType1()}', '{prod.getType2()}', {prod.getSalePrice()}, {prod.getRentalPrice()}, {prod.getStock()})"
+        if prod.getId() == len(items)-1:
+            query += ";"
+        else:
+            query += ", "
+    # execute query
+    cursor.execute(query)
+    # commit changes
+    cursor.execute("COMMIT;")
+
+def addStock(cursor):
+    clear()
+    while True:
+        print("What item are we adding stock to today? (Enter the product ID or enter 'q' to quit)")
+        prod = input("\nProduct ID: ")
+        if prod.lower() in {'q', 'quit'}:
+            return
+        if not prod.isnumeric():
+            print("Please enter an appropriate product ID (must be an integer).")
+            logging.info("Admin attempted to input non-integer for product ID...")
+            continue
+        id = int(prod)
+        cursor.execute(f"SELECT productName, stock FROM catalog WHERE productID={id}")
+        name, stock = None, None
+        for record in cursor:
+            if record is None:
+                break
+            name, stock = record[0], record[1]
+        if name is None or stock is None:
+            clear()
+            print("Not a Valid Product ID. Please try again...")
+            logging.info("Invalid Product ID entered...")
+            continue
+        while True:
+            clear()
+            print(f"Product ID: {id}, Product: {name}, Current Stock: {stock}")
+            tf.pause(2)
+            print("\nIs this the product with new stock? (Y/N)")
+            choice = input("\n>>> ")
+            if choice in yes:
+                t = True
+            elif choice in no:
+                t = False
+            else:
+                print("\nPlease select a valid option (Y - yes, N - no).\n")
+                logging.info("Invalid user input. Did not enter (Y/N) for binary question...")
+                continue
+            break
+        if t:
+            break
+    while True:
+        clear()
+        print("How much of this product has been added to the inventory?")
+        new_stock = input("\n>>> ")
+        if not new_stock.isnumeric():
+            print("Input must be an integer. Try again.")
+            logging.info("Admin entered a non-integer for new inventory...")
+            continue
+        ns = int(new_stock)
+        break
+    # start transaction
+    cursor.execute("START TRANSACTION;")
+    cursor.execute(f"UPDATE catalog SET stock = {stock + ns} WHERE productid={id};")
+    # commit changes
+    cursor.execute("COMMIT;")
+    logging.info(f"Updated inventory for {name} (Product ID: {id})...")
+
 # TODO: NEEDS WORK
 def adminTools(cursor, user):
     '''
     adminTools
     
+    Gives user with admin permissions to admin features.
     
     '''
     # additional layer of security
@@ -400,125 +687,90 @@ def adminTools(cursor, user):
         print("Sorry. You do not have administrative access.")
         logging.info("Unauthorized attempt to reach administrative tools...")
         return None
-    clear()
     while True:
+        clear()
         if type(user) != User:
             break
-        options = {"1", "2", "3", "4", "5", "6", "0"}
-        print("--- ADMINISTRATOR MENU ---\n")
+        print("---------- ADMINISTRATOR MENU ----------\n")
         print("\tView All Orders (1)")
-        print("\tView All Users (2)")
-        print("\tAdd to catalog (3)")
-        print("\tEdit Users (4)")
-        print("\tPromote Users to Admin (5)")
-        print("\tDisable Users (6)")
+        print("\tView All Items Sold (2)")
+        print("\tView All Users (3)")
+        print("\tAdd to catalog (4)")
+        print("\tAdd stock (5)")
+        print("\tEdit Users (6)")
         print("\tExit to main menu (0)\n")
         choice = input("\nMake your selection: ")
-
         if choice.lower() in {"0", "q", "quit"}:
             clear()
             break
         elif choice == "1":
             # view all orders
             clear()
+            print(f'{"ID".rjust(3)} | {"Username".ljust(20)} | Transaction Date/Time')
             cursor.execute("SELECT * FROM orders;")
             for record in cursor:
                 print(f'{str(record[0]).rjust(3)} | {record[1].ljust(20)} | {record[2]}')
             input("\nPress enter to continue.")
+            logging.info("Admin viewed all orders...")
             clear()
         elif choice == "2":
+            # view all items sold
+            clear()
+            print(f'Sale ID | Order ID | {"Product".ljust(25)} | ID  | Quantity')
+            cursor.execute("SELECT UnitID, OrderID, productName, catalog.productID, quantity FROM itemsSold JOIN catalog ON itemsSold.productid=catalog.productid;")
+            for record in cursor:
+                print(f'{str(record[0]).rjust(7)} | {str(record[1]).rjust(8)} | {record[2].ljust(25)} | {str(record[3]).rjust(3)} | {record[4]}')
+            input("\nPress enter to continue.")
+            logging.info("Admin viewed all items sold...")
+            clear()
+        elif choice == "3":
             # view all users
             clear()
-            print(f"{'Username'.ljust(26)}| {'Name'.ljust(29)}| {'Address'.ljust(40)}| Account Balance")
-            cursor.execute("SELECT username, firstName, lastName, address, balance FROM customers;")
+            print(f"{'Username'.ljust(26)}| {'Name'.ljust(29)}| {'Address'.ljust(40)}| Account Balance | Admin")
+            cursor.execute("SELECT username, firstName, lastName, address, balance, adminAccess FROM customers;")
             for record in cursor:
-                name = record[1] + " " + record[2]
-                print(f"{record[0].ljust(26)}| {name.ljust(29)}| {record[3].ljust(40)}| ${'{:.2f}'.format(record[4])}")
-        elif choice == "3":
-            # add item to catalog
-            clear()
-            print("What item are you adding?")
-            item_name = input("\n>>> ")
-            while True:
-                print("\nWhat is the sale price of this item?")
-                u_in = input("\n>>>")
-                for elem in u_in.split("."):
-                    if not elem.isnumeric():
-                        print() #print statement
-                        # log this error
-                        continue
-                item_sprice = float(u_in)
-                break
-            while True:
-                clear()
-                print("Will this item be available to rent?")
-                achoice = input("\n>>> ")
-                if achoice in yes:
-                    clear()
-                    print("What is the rental price (per month) of this item?")
-                    u_in = input("\n>>> ")
-                    for elem in u_in.split("."):
-                        if not elem.isnumeric():
-                            print() #print statement
-                            # log this error
-                            continue
-                elif achoice in no:
-                    pass
+                if record[5] == True:
+                    ad_acc = 'Yes'
                 else:
-                    print("\nPlease select a valid option (Y - yes, N - no).")
-                
-
+                    ad_acc = 'No'
+                if record[4] is None:
+                    bal = str(record[4]).ljust(15)
+                else:
+                    bal = f"${'{:.2f}'.format(record[4]).rjust(14)}"
+                name = str(record[1]) + " " + str(record[2])
+                print(f"{record[0].ljust(26)}| {name.ljust(29)}| {str(record[3]).ljust(40)}| {bal} | {ad_acc}")
+            input("\nPress enter to continue.")
+            logging.info("Admin viewed all users...")
         elif choice == "4":
-            # edit user info
-            pass
+            addItem(cursor)
         elif choice == "5":
-            # promote user to admin
-            pass
+            addStock(cursor)
         elif choice == "6":
-            #disable user
-            t = False
-            print("\nEnter the username for the user you want to disable:")
-            d_usern = input("\n>>> ")
-            cursor.execute(f"SELECT firstName, lastName, address, passkey, balance, adminAccess FROM customers WHERE username='{d_usern}'")
-            for record in cursor:
-                if record is None:
-                    pass
-                elif record[0] == 'DISABLED':
-                    print("This user has already been disabled. Returning to menu...")
-                    t = True
-                elif record[5] == True:
-                    print("Can't disable an admin account. Returning to menu...")
-                    t = True
-                else:
-                    d_user = User(d_usern, record[0], record[1], record[2], record[3], record[4], record[5])
-                    break
-            if t:
-                tf.pause(2)
-                clear()
-                continue
-            clear()
-            print("User to be disabled:")
-            tf.pause(0.5)
-            print(d_user)
-            tf.pause(2)
+            # edit user info
             while True:
-                clear()
-                print(d_user)
-                print("\nAre you sure you want to disable this user? (Y/N)")
-                achoice = input("\n>>> ").lower()
-                if achoice in yes:
-                    disableUser(cursor, d_user)
-                    break
-                elif achoice in no:
+                t = False
+                print("\nEnter the username for the user you want to edit:")
+                e_usern = input("\n>>> ")
+                cursor.execute(f"SELECT firstName, lastName, address, passkey, balance, adminAccess FROM customers WHERE username='{e_usern}'")
+                for record in cursor:
+                    if record is None:
+                        print("Couldn't find user in records...")
+                        logging.info("Couldn't find user in database...")
+                        tf.pause(2)
+                        t = True
+                    else:
+                        e_user = User(e_usern, record[0], record[1], record[2], record[3], record[4], record[5])
+                        break
+                if t:
+                    tf.pause(2)
                     clear()
-                    break
-                else:
-                    clear()
-                    print("Please select a valid option (Y - yes, N - no).")
                     continue
+                editUser(cursor, e_user, True, user)
+                break
 
         else:
-            print("Please select a valid option (Enter a digit between 0 and 6).")
+            print("Please select a valid option (Enter a digit between 0 and 4).")
+            input("\nPress enter to continue.")
     
 def disableUser(cursor, user):
     '''
@@ -532,22 +784,22 @@ def disableUser(cursor, user):
     Returns True.
 
     '''
+    clear()
     if user.isAdmin():
         print("Cannot disable admin account. Returning to menu...")
+        tf.pause(2)
         logging.info("User attempted to disable account without removing admin privileges...")
         return
     # start transaction
     cursor.execute("START TRANSACTION;")
-    cursor.execute(f"UPDATE customers SET firstName = 'DISABLED' WHERE username = '{user.getUsername()}';")
-    user._fname = None
-    cursor.execute(f"UPDATE customers SET lastName = NULL WHERE username = '{user.getUsername()}';")
+    cursor.execute(f"UPDATE customers SET firstName = 'DISABLED', lastName = NULL, address = NULL, balance = NULL WHERE username = '{user.getUsername()}';")
+    user._fname = "DISABLED"
     user._lname = None
-    cursor.execute(f"UPDATE customers SET address = NULL WHERE username = '{user.getUsername()}';")
     user._address = None
-    cursor.execute(f"UPDATE customers SET balance = NULL WHERE username = '{user.getUsername()}';")
     user._balance = None
     # commit changes
     cursor.execute("COMMIT;")
+    print("Account successfully disabled.")
 
 def enableUser(cursor, username):
     '''
@@ -588,6 +840,9 @@ def enableUser(cursor, username):
     address = formatAddress()
     cursor.execute(f"UPDATE customers SET address = '{address}' WHERE username='{username}'")
 
+    # update balance to 0
+    cursor.execute(f"UPDATE customers SET balance = 0 WHERE username='{username}'")
+
     user = User(username, fname, lname, address, nkey, 0)
 
     # commit changes
@@ -602,14 +857,39 @@ def formatAddress():
     Prompts user input to properly format their address for their record in the database
     
     '''
+    clear()
+    print("At any point, you may enter 'q' to quit.")
     print("\nPlease enter your street address. Do not include city, state, or ZIP Code information.\n")
     street = input("\nAddress: ")
-    print("\nPlease enter your city.\n")
+    clear()
+    print("Please enter your city.\n")
     city = input("\nCity: ").capitalize()
-    print("\nPlease enter your state initials (e.g. New York = NY, Texas = TX, etc.).\n")
-    state = input("\nState: ").capitalize()
-    print("\nPlease enter your ZIP Code.\n")
-    zip = input("\nZIP Code: ")
+    while True:
+        clear()
+        print("Please enter your state initials (e.g. New York = NY, Texas = TX, etc.).\n")
+        try:
+            st = input("\nState: ")
+            if len(st) > 2:
+                raise Exception
+            state = st[0].capitalize() + st[1].capitalize()
+            break
+        except Exception:
+            clear()
+            print("You must enter the initials of the state, not the full name.")
+            continue
+    while True:
+        clear()
+        print("Please enter your ZIP Code.\n")
+        zip = input("\nZIP Code: ")
+        if not zip.isnumeric():
+            print("\nZIP code must only contain digits!")
+        elif len(zip) != 5:
+            print("\nZIP Code must be 5 digits long!")
+        else:
+            break
+        tf.pause(2)
+        logging.info("User entered invalid input for ZIP Code...")
+
 
     return f"{street}, {city}, {state} {zip}"
 
@@ -620,11 +900,24 @@ def changeName(cursor, user):
     Prompts user input to change name in database.
     
     '''
+    clear()
+    # display current name in db
+    cursor.execute(f"SELECT firstName, lastName FROM customers WHERE username='{user.getUsername()}';")
+    for record in cursor:
+        if record is None:
+            print("Couldn't get name from database")
+            logging.info("Unable to read data from database...")
+            break
+        else:
+            print(f"Current Name: {record[0]} {record[1]}")
+
+    print("\nPlease enter your first and last name. Please connect multiple last names using a dash (-). Enter 'q' to quit.")
+    ninp_r = input("\nName: ")
+    if ninp_r.lower() in {'q', 'quit'}:
+        return
+    ninp = ninp_r.split(" ")
     # start transaction
     cursor.execute("START TRANSACTION;")
-
-    print("\nPlease enter your first and last name. Please connect multiple last names using a dash (-).")
-    ninp = input("\nName: ").split(" ")
     if len(ninp) == 1:
         fname, lname = ninp[0], ""
     else:
@@ -645,7 +938,7 @@ def changeName(cursor, user):
     # commit changes
     cursor.execute("COMMIT;")
 
-def changePassword(cursor, user):
+def changePassword(cursor, user, user2=None):
     '''
     changePassword
     
@@ -660,74 +953,37 @@ def changePassword(cursor, user):
         if curr_pass.lower() in {'q', 'quit'}:
             return None
         curr_key = passKeyGenerator(curr_pass, cursor)
-        user_key = user.getPasskey()
-        if curr_key != user_key:
-            clear()
-            if count >= 5:
-                print("5 incorrect password attempts. Returning to main menu...")
-                return None
-            print("Sorry, that password is incorrect, try again...")
-            count += 1
-            continue
+        if user2 is None:
+            user_key = user.getPasskey()
+            if curr_key != user_key:
+                clear()
+                if count >= 5:
+                    print("5 incorrect password attempts. Returning to main menu...")
+                    return None
+                print("Sorry, that password is incorrect, try again...")
+                count += 1
+                continue
+            else:
+                break
         else:
-            break
+            user_key = user2.getPasskey()
+            if curr_key != user_key:
+                clear()
+                if count >= 5:
+                    print("5 incorrect password attempts. Returning to main menu...")
+                    return None
+                print("Sorry, that password is incorrect, try again...")
+                count += 1
+                continue
+            else:
+                break
+
     passkey = createPassword(cursor)
     user.setPasskey(passkey)
 
     # start transaction
     cursor.execute("START TRANSACTION;")
     cursor.execute(f"UPDATE customers SET passkey = {passkey} WHERE username='{user.getUsername()}';")
-    # commit changes
-    cursor.execute("COMMIT;")
-
-def changeUsername(cursor, user):
-    '''
-    changeUsername
-    
-    Allows user to modify their username in the database.
-
-    '''
-    clear()
-    # username loop
-    print("\nPlease choose a username, or enter 'q' to quit.\n")
-    while True:
-        username = input("\nUsername: ")
-        if username.lower() in {'q', 'quit'}:
-            return None
-        cursor.execute("SELECT username FROM customers;")
-        in_use = False
-        for record in cursor:
-            if record[0] == username:
-                in_use = True
-                break
-        if in_use:
-            clear()
-            print("Sorry, that username is already in use. Please pick a different username.\n")
-            continue
-        break
-    count = 0
-    clear()
-    print("\nEnter current password, or enter 'q' to quit.\n")
-    while True:
-        curr_pass = getpass("\nPassword: ")
-        if curr_pass.lower() in {'q', 'quit'}:
-            return None
-        curr_key = passKeyGenerator(curr_pass, cursor)
-        user_key = user.getPasskey()
-        if curr_key != user_key:
-            if count >= 5:
-                print("5 incorrect password attempts. Returning to main menu...")
-                return None
-            print("Sorry, that password is incorrect, try again...")
-            count += 1
-            continue
-        else:
-            break
-
-    # start transaction
-    cursor.execute("START TRANSACTION;")
-    cursor.execute(f"UPDATE customers SET username = {username} WHERE username='{user.getUsername()}';")
-    user.setUsername(username)
     # commit changes
     cursor.execute("COMMIT;")
 
@@ -747,7 +1003,7 @@ def createPassword(cursor):
         if password == "1":
             clear()
             rules = "\n\t- Should be at least 8 characters\n\t- Should contain at least 1 digit (0-9)\n\t- Should contain at least 1 special character (. * ` ~ ! @ # $ % ^ & - _ + ?)\n\t- Should not contain spaces\n"
-            print("\n\n" + "PASSWORD RULES".center(50,"*") + rules)
+            print("PASSWORD RULES".center(50,"*") + rules)
             continue
         elif len(password) < 8:
             clear()
@@ -768,22 +1024,28 @@ def createPassword(cursor):
         break
     return passKeyGenerator(password, cursor)
 
-def editUser(cursor, user):
+def editUser(cursor, user, admin=False, user2=None):
     '''
     editUser
 
     Gives user access to their account settings.
     '''
-    clear()
     while True:
+        clear()
+        if admin:
+            print(f"User: {user.getUsername()}\n")
         print("Please select an option from below:\n")
         print("\tView Balance (1)")
         print("\tAdd To Balance (2)")
         print("\tChange Address (3)")
         print("\tChange Name (4)")
         print("\tChange Password (5)")
-        print("\tChange Username (6)")
-        print("\tDisable account (7)")
+        print("\tDisable account (6)")
+        if admin:
+            if user.isAdmin():
+                print("\tDemote User from Administrator (7)")
+            else:
+                print("\tPromote User to Administrator (7)")
         print("\tExit menu (0)")
         choice = input("\n>>> ")
 
@@ -804,6 +1066,15 @@ def editUser(cursor, user):
             # commit changes
             cursor.execute("COMMIT;")
         elif choice == "3":
+            clear()
+            # display current address
+            cursor.execute(f"SELECT address FROM customers WHERE username = '{user.getUsername()}';")
+            for record in cursor:
+                if record is None:
+                    print("Couldn't get current address...")
+                    tf.pause(2)
+                    break
+                print(f"Current Address: {record[0]}")
             # change address
             user.setAddress(formatAddress())
             # start transaction
@@ -812,13 +1083,19 @@ def editUser(cursor, user):
             # commit changes
             cursor.execute("COMMIT;")
         elif choice == "4":
-            changeName()
+            changeName(cursor, user)
         elif choice == "5":
-            changePassword()
+            changePassword(cursor, user, user2)
         elif choice == "6":
-            changeUsername()
-        elif choice == "7":
-            print("\nAre you sure you want to disable your account? This will remove personal data but\nwill not remove your username or order history. You can reactivate your account later.")
+            if admin:
+                pronoun = f"{user.getName(1)}'s"
+                poss = pronoun + "'s"
+                poss2 = "their"
+            else:
+                pronoun = "You"
+                poss = "your"
+                poss2 = poss
+            print(f"\nAre you sure you want to disable {poss} account? This will remove personal data but\nwill not remove {poss} username or order history. {pronoun} can reactivate {poss2} account later.")
             disable_choice = input("\nY/N: ").lower()
             if disable_choice in yes:
                 disableUser(cursor, user)
@@ -826,10 +1103,115 @@ def editUser(cursor, user):
                 continue
             else:
                 print("\nInvalid input. Returning to previous menu...")
+                tf.pause(2)
                 logging.info("Invalid input. Returning to account settings menu...")
                 continue
+        elif choice == "7":
+            if user.isAdmin():
+                # demote from admin
+                while True:
+                    clear()
+                    print(f"Are you sure you want to remove {user.getUsername()} as Administrator? (Y/N)")
+                    a_choice = input("\n>>> ")
+                    if a_choice in yes:
+                        pcount = 0
+                        while True:
+                            print("\nPlease enter the admin password below.")
+                            apass = getpass("\nPassword: ")
+                            akey = passKeyGenerator(apass, cursor)
+                            if pcount >= 5:
+                                tf.pause(1)
+                                print("5 Incorrect passsord attempts.")
+                                tf.pause(1)
+                                tf.slowPrint("\nExiting program", 0.02)
+                                tf.pause(1)
+                                tf.slowPrint("...", 0.5)
+                                print()
+                                logging.info("5 incorrect administrator password attempts. Exiting menu...")
+                                break
+                            elif akey != user2.getPasskey():
+                                clear()
+                                pcount += 1
+                                print(f"Sorry, that password is incorrect. Please try again. {6 - pcount} attempt(s) remaining.\n")
+                                continue
+                            elif akey == user2.getPasskey():
+                                clear()
+                                # slow text and pauses gives admin opportunity to abort operation if necessary
+                                tf.slowPrint(f"Removing User {user.getUsername()} from Administrator.", 0.01)
+                                tf.slowPrint("...", 0.1)
+                                tf.pause(1)
+                                # start transaction
+                                cursor.execute("START TRANSACTION;")
+                                cursor.execute(f"UPDATE customers SET adminAccess = False WHERE username='{user.getUsername()}';")
+                                # commit changes
+                                cursor.execute("COMMIT;")
+                                clear()
+                                print(f"Operation completed successfully! {user.getUsername()} no longer has administrator privileges.")
+                                logging.info(f"User {user.getUsername()} successfully removed as admin...")
+                                tf.pause(2.5)
+                            break
+                        break
+                    elif a_choice in no:
+                        break
+                    else:
+                        print("Please select a valid option (Y - yes, N - no).")
+                        logging.info("Admin entered invalid input for binary (Y/N) selection...")
+                        continue
+            else:
+                # promote to admin
+                while True:
+                    clear()
+                    print(f"Are you sure you want to promote {user.getUsername()} to Administrator? (Y/N)")
+                    a_choice = input("\n>>> ")
+                    if a_choice in yes:
+                        pcount = 0
+                        while True:
+                            print("\nPlease enter the admin password below.")
+                            apass = getpass("\nPassword: ")
+                            akey = passKeyGenerator(apass, cursor)
+                            if pcount >= 5:
+                                tf.pause(1)
+                                print("5 Incorrect passsord attempts.")
+                                tf.pause(1)
+                                tf.slowPrint("\nExiting program", 0.02)
+                                tf.pause(1)
+                                tf.slowPrint("...", 0.5)
+                                print()
+                                logging.info("5 incorrect administrator password attempts. Exiting menu...")
+                                break
+                            elif akey != user2.getPasskey():
+                                clear()
+                                pcount += 1
+                                print(f"Sorry, that password is incorrect. Please try again. {6 - pcount} attempt(s) remaining.\n")
+                                continue
+                            elif akey == user2.getPasskey():
+                                clear()
+                                # slow text and pauses gives admin opportunity to abort operation if necessary
+                                tf.slowPrint(f"Setting User {user.getUsername()} to Administrator.", 0.01)
+                                tf.slowPrint("...", 0.1)
+                                tf.pause(1)
+                                # start transaction
+                                cursor.execute("START TRANSACTION;")
+                                cursor.execute(f"UPDATE customers SET adminAccess = True WHERE username='{user.getUsername()}';")
+                                # commit changes
+                                cursor.execute("COMMIT;")
+                                clear()
+                                print(f"Operation completed successfully! {user.getUsername()} now has administrator privileges.")
+                                logging.info(f"User {user.getUsername()} successfully upgraded to admin...")
+                                tf.pause(2.5)
+                            break
+                        break
+                    elif a_choice in no:
+                        break
+                    else:
+                        print("Please select a valid option (Y - yes, N - no).")
+                        logging.info("Admin entered invalid input for binary (Y/N) selection...")
+                        continue
         else:
-            print("Please choose a valid option (0-7).")
+            m_choice = 6
+            if admin:
+                m_choice = 7
+            print(f"Please choose a valid option (0-{m_choice}).")
             logging.info("User entered invalid input...")
             continue
 
@@ -904,7 +1286,7 @@ def viewCatalog(cursor):
         product = Product(record[0], record[1], record[2], record[3], record[4], record[5], record[6])
         print(product, "\n" + "|".rjust(26) + "|".rjust(6) + "|".rjust(13))
     print("\n")
-    tf.pause(5)
+    tf.pause(2)
     input("\nPress Enter to exit catalog.")
     
 def login(cursor, user=None):
@@ -968,6 +1350,7 @@ def login(cursor, user=None):
                     tf.pause(1)
                     tf.slowPrint("...", 0.5)
                     print()
+                    logging.info("5 failed password attempts. Exiting program...")
                     return None
                 if ckey != key:
                     clear()
@@ -975,9 +1358,9 @@ def login(cursor, user=None):
                     print(f"Sorry, that password is incorrect. Please try again. {6 - pcount} attempt(s) remaining.\n")
                 elif ckey == key:
                     clear()
-                    print("Login successful.\n")
+                    print("Login successful.")
                     tf.pause(1)
-                    print("Welcome back!\n")
+                    print(f"\nWelcome back, {_user[1]}!")
                     if _user[6] == True:
                         user = User(_user[0], _user[1], _user[2], _user[3], _user[4], _user[5], True)
                     else:
