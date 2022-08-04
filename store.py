@@ -12,6 +12,9 @@ from getpass import getpass
 # - Create editUser() function
 # - Create removeUser() function
 
+yes = {"y", "yes"}
+no = {"n", "no"}
+
 def main():
 
     logging.basicConfig(filename="store.log", level=logging.DEBUG, format='%(asctime)s :: %(message)s')
@@ -43,11 +46,11 @@ def main():
         if uchoice in {"q", "quit"}:
             t_user = 0
             break
-        if uchoice in {"n", "no"}:
+        if uchoice in no:
             # send user to account creation process. Returns user object so new user doesn't have to log in again.
             t_user = addUser(cursor)
             break
-        elif uchoice in {"y", "yes"}:
+        elif uchoice in yes:
             # None will send user to typical login process
             t_user = None
             break
@@ -256,9 +259,9 @@ def addOrder(user,cursor, cart=[]):
             else:
                 break
 
-        if u_c in {"y", "yes"}:
+        if u_c in yes:
             continue
-        elif u_c in {"n", "no"}:
+        elif u_c in no:
             break
     
     new_balance = user.changeBalance(-total)
@@ -433,7 +436,38 @@ def adminTools(cursor, user):
                 print(f"{record[0].ljust(26)}| {name.ljust(29)}| {record[3].ljust(40)}| ${'{:.2f}'.format(record[4])}")
         elif choice == "3":
             # add item to catalog
-            pass
+            clear()
+            print("What item are you adding?")
+            item_name = input("\n>>> ")
+            while True:
+                print("\nWhat is the sale price of this item?")
+                u_in = input("\n>>>")
+                for elem in u_in.split("."):
+                    if not elem.isnumeric():
+                        print() #print statement
+                        # log this error
+                        continue
+                item_sprice = float(u_in)
+                break
+            while True:
+                clear()
+                print("Will this item be available to rent?")
+                achoice = input("\n>>> ")
+                if achoice in yes:
+                    clear()
+                    print("What is the rental price (per month) of this item?")
+                    u_in = input("\n>>> ")
+                    for elem in u_in.split("."):
+                        if not elem.isnumeric():
+                            print() #print statement
+                            # log this error
+                            continue
+                elif achoice in no:
+                    pass
+                else:
+                    print("\nPlease select a valid option (Y - yes, N - no).")
+                
+
         elif choice == "4":
             # edit user info
             pass
@@ -472,10 +506,10 @@ def adminTools(cursor, user):
                 print(d_user)
                 print("\nAre you sure you want to disable this user? (Y/N)")
                 achoice = input("\n>>> ").lower()
-                if achoice in {"y", "yes"}:
+                if achoice in yes:
                     disableUser(cursor, d_user)
                     break
-                elif achoice in {"n", "no"}:
+                elif achoice in no:
                     clear()
                     break
                 else:
@@ -786,9 +820,9 @@ def editUser(cursor, user):
         elif choice == "7":
             print("\nAre you sure you want to disable your account? This will remove personal data but\nwill not remove your username or order history. You can reactivate your account later.")
             disable_choice = input("\nY/N: ").lower()
-            if disable_choice in {"y", "yes"}:
+            if disable_choice in yes:
                 disableUser(cursor, user)
-            elif disable_choice in {"n", "no"}:
+            elif disable_choice in no:
                 continue
             else:
                 print("\nInvalid input. Returning to previous menu...")
