@@ -108,6 +108,8 @@ def main():
                 cart = addOrder(user, cursor)
             else:
                 cart = addOrder(user, cursor, cart)
+        elif choice == "3":
+            returnRental(user, cursor)
         elif choice == "4":
             viewOrderHistory(cursor, user)
         elif choice == "5":
@@ -118,12 +120,16 @@ def main():
             input("\nPress enter to continue.\n")
         elif choice == "6":
             clear()
+            curr_bal = user.getBalance()
             balance = user.addToBalance()
             # start transaction
             cursor.execute("START TRANSACTION;")
             cursor.execute(f"UPDATE customers SET balance = {balance} WHERE username = '{username}'")
             # commit changes
             cursor.execute("COMMIT;")
+            clear()
+            chng = balance - curr_bal
+            print(f"Successfully added ${'{:.2f}'.format(chng)} to your account!")
             tf.pause(2)
         elif choice == "7":
             editUser(cursor, user)
@@ -192,6 +198,7 @@ def addOrder(user,cursor, cart=[]):
                 logging.info("User failed to enter an integer for Product ID...")
                 continue
             cursor.execute("SELECT ProductID FROM catalog;")
+            logging.info("User accessed catalog table in project1 database...")
             id_list = []
             for record in cursor:
                 id_list.append(record[0])
@@ -202,6 +209,7 @@ def addOrder(user,cursor, cart=[]):
             else:
                 break
         cursor.execute(f"SELECT * FROM catalog WHERE ProductID={prod_id};")
+        logging.info("User accessed catalog table in project1 database...")
         for record in cursor:
             prod = Product(record[0], record[1], record[2], record[3], record[4], record[5], record[6])
         if prod.getStock() == 0:
@@ -209,17 +217,21 @@ def addOrder(user,cursor, cart=[]):
             logging.info("User tried to buy a product that is out of stock...")
             continue
         if prod.getRentalPrice() == 0:
-            t = "p"
+            t = False
         else:
             while True:
                 print("\nWill you be renting(R) or purchasing(P) today?\n")
-                t = input("\n>>> ").lower()
-                if len(t) != 1:
-                    t = t[0]
-                if t not in {"p", "r"}:
+                t_in = input("\n>>> ").lower()
+                if len(t_in) != 1:
+                    t_in = t_in[0]
+                if t_in not in {"p", "r"}:
                     print("Please select a valid option (R for renting, P for purchasing).")
                     logging.info("Invalid user input for rental/purchase option...")
                     continue
+                if t_in == 'p':
+                    t = False
+                elif t_in == 'r':
+                    t = True
                 break
         while True:
             if prod.getName()[-1] == "s":
@@ -231,6 +243,10 @@ def addOrder(user,cursor, cart=[]):
                 quant = int(input("\n>>> "))
                 if quant < 0:
                     raise Exception
+                elif quant == 0:
+                    clear()
+                    print("Exiting to main menu...")
+                    return cart
                 else:
                     break
             except ValueError:
@@ -254,9 +270,9 @@ def addOrder(user,cursor, cart=[]):
         print(f"\033[4m{pstatement}\033[0m")
         total = 0
         for elem in cart:
-            if elem[2] == "r":
+            if elem[2]:
                 price = elem[0].getRentalPrice()
-            elif elem[2] == "p":
+            else:
                 price = elem[0].getSalePrice()
             print(f"{elem[0].getName().ljust(25)}|{str(elem[1]).rjust(9)} | ${str(round(elem[1] * price, 2))}")
             total += round(elem[1] * price, 2)
@@ -285,6 +301,9 @@ def addOrder(user,cursor, cart=[]):
     new_balance = user.changeBalance(-total)
     if new_balance == None:
         print("You do not have sufficient funds in your balance to make this purchase. Please add funds and try again later.")
+        logging.info("User tried to make a purchase without sufficient funds...")
+        tf.pause(2)
+        input("\nPress enter to continue.")
         return cart
     # start transaction
     o_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -292,7 +311,9 @@ def addOrder(user,cursor, cart=[]):
     # change database inventory
     try:
         cursor.execute(f"INSERT INTO orders (username, transactionTime) VALUES ('{user.getUsername()}', '{o_time}')")
+        logging.info("Program inserted data into orders table in project1 database...")
         cursor.execute(f"SELECT orderID FROM orders WHERE username='{user.getUsername()}' AND transactionTime='{o_time}'")
+        logging.info("Program accessed orders table in project1 database...")
         o_id = None
         for record in cursor:
             if record is None:
@@ -303,10 +324,17 @@ def addOrder(user,cursor, cart=[]):
             else:
                 o_id = record[0]
         for elem in cart:
-            cursor.execute(f"INSERT INTO itemsSold (OrderID, ProductID, quantity) VALUES ({o_id}, {elem[0].getId()}, {elem[1]});")
+            if elem[2]:
+                price = elem[1] * elem[0].getRentalPrice()
+            else:
+                price = elem[1] * elem[0].getSalePrice()
+            cursor.execute(f"INSERT INTO itemsSold (OrderID, ProductID, quantity, rented, price) VALUES ({o_id}, {elem[0].getId()}, {elem[1]}, {elem[2]}, {price});")
             cursor.execute(f"UPDATE catalog SET stock = {elem[0].getStock()} WHERE ProductID={elem[0].getId()};")
         # change user balance
         cursor.execute(f"UPDATE customers SET balance = {new_balance} WHERE username = '{user.getUsername()}';")
+        logging.info("Program inserted data into itemsSold table in project1 database...")
+        logging.info("Program updated catalog table in project1 database...")
+        logging.info("Program updated customers table in project1 database...")
     except mysql.connector.Error as mce:
         print(mce.msg)
         logging.info(mce.msg)
@@ -385,11 +413,34 @@ def returnRental(user, cursor):
     cursor.execute("START TRANSACTION;")
     # update stock inventory
     cursor.execute(f"UPDATE catalog SET stock = {stock} WHERE ProductID={pID};")
+    logging.info("Program updated catalog table in project1 database...")
+    # update unit info
+    cursor.execute(f"UPDATE itemsSold SET rented = FALSE WHERE UnitID={uID};")
+    logging.info("Program updated itemsSold table in project1 database...")
     # commit changes
     cursor.execute("COMMIT;")
     tf.pause(2)
 
-# TODO: NEEDS TESTING
+def viewRentals(user, cursor):
+    '''
+    viewRentals
+    
+    
+    Allows user to access database to see outstanding rentals
+    
+    '''
+    query2 = f'WITH t1 AS (SELECT UnitID, ProductID, transactionTime, quantity FROM itemsSold LEFT JOIN orders on itemsSold.orderID=orders.orderID WHERE username="{user.getUsername()}" AND rented=True) SELECT UnitID, productName, quantity, (rentalPrice * quantity), transactionTime FROM t1 JOIN catalog ON t1.productID=catalog.productID;'
+    print(f"Unit ID | {'Product'.ljust(25)} | Rented | Total   | Transaction Date/Time")
+    cursor.execute(query2)
+    for record in cursor:
+        if record is None:
+            print(" END OF RENTAL HISTORY ".center(45, '-'))
+            break
+        print(f"{str(record[0]).zfill(3).rjust(7)} | {record[1].ljust(25)} | {str(record[2]).rjust(6)} | ${('{:.2f}'.format(record[3])).rjust(6)} | {record[4]}")
+    logging.info("Program accessed itemsSold, orders, and catalog tables in project1 database...")
+    tf.pause(2)
+    input("\nPress enter to return to menu.")
+
 def viewOrderHistory(cursor, user):
     '''
     viewOrderHistory
@@ -397,7 +448,7 @@ def viewOrderHistory(cursor, user):
     Allows user to view all orders they have made. Prints a table of their orders.
 
     '''
-    query = 'WITH t1 AS (SELECT OrderID, productName AS Product, quantity, (quantity * salePrice) AS Total FROM itemsSold JOIN catalog ON itemsSold.ProductID=catalog.ProductID)'
+    query = 'WITH t1 AS (SELECT OrderID, (quantity * salePrice) AS Total FROM itemsSold JOIN catalog ON itemsSold.ProductID=catalog.ProductID)'
     query+= f'SELECT t1.OrderID, transactionTime, SUM(Total) FROM orders JOIN t1 ON t1.OrderID=orders.OrderID WHERE username="{user.getUsername()}" GROUP BY OrderID;'
     cursor.execute(query)
     valid_ids = []
@@ -413,22 +464,25 @@ def viewOrderHistory(cursor, user):
         for elem in orderHist:
             print(elem)
         print(f"\n{' END OF ORDER HISTORY '.center(44, '-')}-\n")
-        print("\nEnter an Order ID to view order details, or press enter to exit to the main menu.")
+        print("\nEnter an Order ID to view order details, enter 'r' to view outstanding rentals, or press enter to exit to the main menu.")
         id_in = input("\n>>> ")
-        if id_in.isnumeric():
+        if 'r' in id_in.lower():
+            viewRentals(user, cursor)
+            break
+        elif id_in.isnumeric():
             id = int(id_in)
+            cursor.execute(f'SELECT * FROM itemsSold JOIN catalog ON itemsSold.ProductID=catalog.ProductID WHERE OrderID={id};')
+            for record in cursor:
+                if record is None:
+                    empty = True
+                else:
+                    empty = False
         else:
             break
-        cursor.execute(f'SELECT * FROM itemsSold JOIN catalog ON itemsSold.ProductID=catalog.ProductID WHERE OrderID={id};')
-        for record in cursor:
-            if record is None:
-                empty = True
-            else:
-                empty = False
         if id not in valid_ids or empty:
             print("\nNo such order in your history...\n")
         else:
-            cursor.execute(f'SELECT productName AS Product, quantity, (quantity * salePrice) AS Total FROM itemsSold JOIN catalog ON itemsSold.ProductID=catalog.ProductID WHERE OrderID={id};')
+            cursor.execute(f'SELECT productName AS Product, quantity, price FROM itemsSold JOIN catalog ON itemsSold.ProductID=catalog.ProductID WHERE OrderID={id};')
             print(f'{"Product".ljust(25)} | Quantity | Price\n{"".ljust(50, "-")}')
 
             for record in cursor:
@@ -674,7 +728,6 @@ def addStock(cursor):
     cursor.execute("COMMIT;")
     logging.info(f"Updated inventory for {name} (Product ID: {id})...")
 
-# TODO: NEEDS WORK
 def adminTools(cursor, user):
     '''
     adminTools
@@ -695,9 +748,10 @@ def adminTools(cursor, user):
         print("\tView All Orders (1)")
         print("\tView All Items Sold (2)")
         print("\tView All Users (3)")
-        print("\tAdd to catalog (4)")
-        print("\tAdd stock (5)")
-        print("\tEdit Users (6)")
+        print("\tView Inventory (4)")
+        print("\tAdd to catalog (5)")
+        print("\tAdd stock (6)")
+        print("\tEdit Users (7)")
         print("\tExit to main menu (0)\n")
         choice = input("\nMake your selection: ")
         if choice.lower() in {"0", "q", "quit"}:
@@ -742,30 +796,42 @@ def adminTools(cursor, user):
             input("\nPress enter to continue.")
             logging.info("Admin viewed all users...")
         elif choice == "4":
-            addItem(cursor)
+            # view inventory
+            clear()
+            cursor.execute("SELECT ProductID, productName, stock FROM catalog;")
+            logging.info("User accessed catalog table in project1 database...")
+
+            print(f'ID  | {"Product Name".ljust(25)} | Inventory')
+            print("|".rjust(5,"-") + "|".rjust(28,"-") + "".center(15,"-"))
+
+            for record in cursor:
+                print(f'{str(record[0]).zfill(3)} | {record[1].ljust(25)} | {record[2]}')
+                print("|".rjust(5) + "|".rjust(28))
+            
+            input("\n\nPress Enter to exit catalog.")
         elif choice == "5":
-            addStock(cursor)
+            addItem(cursor)
         elif choice == "6":
+            addStock(cursor)
+        elif choice == "7":
             # edit user info
             while True:
-                t = False
                 print("\nEnter the username for the user you want to edit:")
                 e_usern = input("\n>>> ")
-                cursor.execute(f"SELECT firstName, lastName, address, passkey, balance, adminAccess FROM customers WHERE username='{e_usern}'")
-                for record in cursor:
-                    if record is None:
-                        print("Couldn't find user in records...")
-                        logging.info("Couldn't find user in database...")
-                        tf.pause(2)
-                        t = True
-                    else:
-                        e_user = User(e_usern, record[0], record[1], record[2], record[3], record[4], record[5])
-                        break
-                if t:
+                if e_usern.lower() in {'q', 'quit'}:
+                    break
+                cursor.execute(f"SELECT firstName, lastName, address, passkey, balance, adminAccess FROM customers WHERE username='{e_usern}';")
+                lst = cursor.fetchall()
+                if lst == []:
+                    print("Couldn't find user in records...")
+                    logging.info("Couldn't find user in database...")
                     tf.pause(2)
-                    clear()
                     continue
-                editUser(cursor, e_user, True, user)
+                else:
+                    for record in lst:
+                        e_user = User(e_usern, record[0], record[1], record[2], record[3], record[4], record[5])
+                        editUser(cursor, e_user, True, user)
+                        break
                 break
 
         else:
@@ -1251,6 +1317,7 @@ def viewCatalog(cursor):
     print("\tPercussion catalog (3)")
     print("\tElectronics catalog (4)")
     print("\tGuitar, Bass Guitar, Piano (5)")
+    print("\tGeneral (6)")
     print("\tEntire catalog (0)")
     print("\nEnter any other input to return to previous menu.")
     choice2 = input("\n>>> ")
@@ -1259,24 +1326,27 @@ def viewCatalog(cursor):
         query += ";"
     else:
         if choice == "0":
-            query += " WHERE "
+            query += " WHERE type2="
         else:
-            query += " AND "
+            query += " AND type2="
         if choice2 == "1":
-            query += "type2 = 'Band'"
+            query += "'Band'"
         elif choice2 == "2":
-            query += "type2 = 'Orchestra'"
+            query += "'Orchestra'"
         elif choice2 == "3":
-            query += "type2 = 'Percussion'"
+            query += "'Percussion'"
         elif choice2 == "4":
-            query += "type2 = 'Electronics'"
+            query += "'Electronics'"
         elif choice2 == "5":
-            query += "type2 = 'Rhythm'"
+            query += "'Rhythm'"
+        elif choice2 == "6":
+            query += "'General'"
         else:
             return False
 
     clear()
     cursor.execute(query)
+    logging.info("User accessed catalog table in project1 database...")
 
     print(f'{"Product Name".ljust(25)}| ID  | Sale Price | {"Rental Price".ljust(15)}')
     print("|".rjust(26,"-") + "|".rjust(6,"-") + "|".rjust(13,"-") + "".center(15,"-"))
@@ -1285,9 +1355,9 @@ def viewCatalog(cursor):
         tf.pause(0.05)
         product = Product(record[0], record[1], record[2], record[3], record[4], record[5], record[6])
         print(product, "\n" + "|".rjust(26) + "|".rjust(6) + "|".rjust(13))
-    print("\n")
+    
     tf.pause(2)
-    input("\nPress Enter to exit catalog.")
+    input("\n\nPress Enter to exit catalog.")
     
 def login(cursor, user=None):
     '''
@@ -1337,9 +1407,9 @@ def login(cursor, user=None):
                 tf.pause(3)
                 enableUser(cursor, username)
             key = int(_user[4])
-            clear()
-            print("Please enter your password.\n")
+            print()
             while True:
+                print("Please enter your password.\n")
                 password = getpass("\nPassword: ")
                 ckey = passKeyGenerator(password, cursor)
                 if pcount >= 5:
@@ -1356,6 +1426,9 @@ def login(cursor, user=None):
                     clear()
                     pcount += 1
                     print(f"Sorry, that password is incorrect. Please try again. {6 - pcount} attempt(s) remaining.\n")
+                    tf.pause(3)
+                    clear()
+                    continue
                 elif ckey == key:
                     clear()
                     print("Login successful.")
