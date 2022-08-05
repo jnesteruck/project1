@@ -121,6 +121,7 @@ def main():
         elif choice == "6":
             clear()
             curr_bal = user.getBalance()
+            print(f"Your balance: ${'{:.2f}'.format(curr_bal)}\n")
             balance = user.addToBalance()
             # start transaction
             cursor.execute("START TRANSACTION;")
@@ -399,9 +400,9 @@ def returnRental(user, cursor):
         tf.pause(2)
         return
     if q > 1 and pname[-1] == 's':
-        prod_str = str(q) + pname
+        prod_str = f'{q} {pname}'
     elif q > 1:
-        prod_str = str(q) + pname + 's'
+        prod_str = f'{q} {pname}s'
     elif q == 1:
         prod_str = pname
 
@@ -448,8 +449,7 @@ def viewOrderHistory(cursor, user):
     Allows user to view all orders they have made. Prints a table of their orders.
 
     '''
-    query = 'WITH t1 AS (SELECT OrderID, (quantity * salePrice) AS Total FROM itemsSold JOIN catalog ON itemsSold.ProductID=catalog.ProductID)'
-    query+= f'SELECT t1.OrderID, transactionTime, SUM(Total) FROM orders JOIN t1 ON t1.OrderID=orders.OrderID WHERE username="{user.getUsername()}" GROUP BY OrderID;'
+    query = f'SELECT orders.OrderID, transactionTime, SUM(price) FROM orders JOIN itemsSold ON itemsSold.OrderID=orders.OrderID WHERE username="{user.getUsername()}" GROUP BY OrderID;'
     cursor.execute(query)
     valid_ids = []
     orderHist = []
@@ -760,10 +760,12 @@ def adminTools(cursor, user):
         elif choice == "1":
             # view all orders
             clear()
-            print(f'{"ID".rjust(3)} | {"Username".ljust(20)} | Transaction Date/Time')
-            cursor.execute("SELECT * FROM orders;")
+            print(f'{"ID".rjust(3)} | {"Username".ljust(20)} | Total     | Transaction Date/Time')
+            query0 = 'WITH t1 AS (SELECT SUM(price) as tot_price, OrderID FROM itemsSold GROUP BY OrderID) SELECT t1.OrderID, username, tot_price, transactionTime FROM orders JOIN t1 ON t1.OrderID=orders.OrderID;'
+            cursor.execute(query0)
             for record in cursor:
-                print(f'{str(record[0]).rjust(3)} | {record[1].ljust(20)} | {record[2]}')
+                price = '{:.2f}'.format(record[2])
+                print(f'{str(record[0]).rjust(3)} | {record[1].ljust(20)} | ${price.rjust(8)} | {record[3]}')
             input("\nPress enter to continue.")
             logging.info("Admin viewed all orders...")
             clear()
@@ -1120,17 +1122,23 @@ def editUser(cursor, user, admin=False, user2=None):
         elif choice == "1":
             # view balance
             clear()
-            print(f"\nYour balance: ${'{:.2f}'.format(user.getBalance())}\n")
+            print(f"Your balance: ${'{:.2f}'.format(user.getBalance())}\n")
             tf.pause(1)
             input("\nPress enter to continue.\n")
         elif choice == "2":
-            # add to  balance
+            clear()
+            curr_bal = user.getBalance()
+            print(f"Your balance: ${'{:.2f}'.format(curr_bal)}\n")
             balance = user.addToBalance()
             # start transaction
             cursor.execute("START TRANSACTION;")
-            cursor.execute(f"UPDATE customers SET balance = {balance} WHERE username='{user.getUsername()}';")
+            cursor.execute(f"UPDATE customers SET balance = {balance} WHERE username = '{user.getUsername()}'")
             # commit changes
             cursor.execute("COMMIT;")
+            clear()
+            chng = balance - curr_bal
+            print(f"Successfully added ${'{:.2f}'.format(chng)} to your account!")
+            tf.pause(2)
         elif choice == "3":
             clear()
             # display current address
