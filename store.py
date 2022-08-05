@@ -1,21 +1,14 @@
 from tkinter import Y
-import mysql.connector, re, os, logging
+import mysql.connector, re, os, logging, datetime
 import mysql_config as c
 import textFormat as tf
 from product import Product
 from user import User
 from getpass import getpass
-import datetime
-
-# TODO:
-# - Create addOrder() function
-# - Create adminTools() function
-# - Create editUser() function
-# - Create removeUser() function
 
 yes = {"y", "yes"}
 no = {"n", "no"}
-fancy = False
+fancy = True
 
 def main():
 
@@ -37,7 +30,7 @@ def main():
     if fancy:
         tf.fastPrint("".center(200, "-"), 5)
         print()
-        tf.fastPrint(" Welcome to the Music Store! ".center(200, "-"), 3, spd=0.02)
+        tf.fastPrint(" Welcome to the Music Depot! ".center(200, "-"), 3, spd=0.02)
         print()
         tf.fastPrint("".center(200, "-"), 7)
         tf.pause(2)
@@ -98,6 +91,7 @@ def main():
         choice = input("\nMake your selection: ")
         if choice not in options:
             print(f"Please select a valid option (Enter a digit between 0 and {omax})")
+            tf.pause(2)
         elif choice.lower() in {"0", "q", "quit"}:
             clear()
             break
@@ -136,8 +130,8 @@ def main():
             editUser(cursor, user)
         elif choice == "8":
             admin_count = 0
+            clear()
             while True:
-                clear()
                 print("Please enter the admin password:\n")
                 userpass = getpass("\nPassword: ")
                 userkey = passKeyGenerator(userpass, cursor)
@@ -145,11 +139,13 @@ def main():
                 for record in cursor:
                     adminkey = record[0]
                 if userkey != adminkey:
+                    clear()
                     if admin_count >= 5:
-                        print("\n5 incorrect password attempts. Exiting admin settings...\n")
+                        print("5 incorrect password attempts. Exiting admin settings to main menu...\n")
                         logging.info("Unauthorized attempt to reach administrative tools...")
+                        tf.pause(2)
                         break
-                    print("\nSorry, that password is incorrect, try again...\n")
+                    print(f"Sorry, that password is incorrect. {5 - admin_count} attempts remaining, try again...\n")
                     admin_count += 1
                 else:
                     adminTools(cursor, user)
@@ -165,7 +161,7 @@ def main():
         if fancy:
             tf.fastPrint("".center(200,"-"), 5)
             print()
-            tf.fastPrint(" Thank you for visiting the music store! Have a wonderful day! ".center(200,"-"), 3, spd=0.02)
+            tf.fastPrint(" Thank you for visiting the Music Depot! Have a wonderful day! ".center(200,"-"), 3, spd=0.02)
             print()
             tf.fastPrint("".center(200,"-"), 7)
             tf.pause(3)
@@ -216,6 +212,7 @@ def addOrder(user,cursor, cart=[]):
         if prod.getStock() == 0:
             print("\nSorry, this product is out of stock. Please make a different selection.\n")
             logging.info("User tried to buy a product that is out of stock...")
+            tf.pause(3)
             continue
         if prod.getRentalPrice() == 0:
             t = False
@@ -343,6 +340,7 @@ def addOrder(user,cursor, cart=[]):
         return cart
     # commit changes
     cursor.execute("COMMIT;")
+    logging.info("User purchase successful...")
     return []
 
 def returnRental(user, cursor):
@@ -539,6 +537,7 @@ def addUser(cursor):
     cursor.execute(query)
     # commit changes
     cursor.execute("COMMIT;")
+    logging.info(f"User {username} has been added to the database...")
 
     return user
 
@@ -925,18 +924,24 @@ def formatAddress():
     Prompts user input to properly format their address for their record in the database
     
     '''
-    clear()
-    print("At any point, you may enter 'q' to quit.")
-    print("\nPlease enter your street address. Do not include city, state, or ZIP Code information.\n")
+    quit = {'q', 'quit'}
+    print("\nAt any point, you may enter 'q' to quit.")
+    print("Please enter your street address. Do not include city, state, or ZIP Code information.\n")
     street = input("\nAddress: ")
+    if street.lower() in quit:
+        return
     clear()
     print("Please enter your city.\n")
     city = input("\nCity: ").capitalize()
+    if city.lower() in quit:
+        return
     while True:
         clear()
         print("Please enter your state initials (e.g. New York = NY, Texas = TX, etc.).\n")
         try:
             st = input("\nState: ")
+            if st.lower() in {'q', 'quit'}:
+                return
             if len(st) > 2:
                 raise Exception
             state = st[0].capitalize() + st[1].capitalize()
@@ -949,6 +954,8 @@ def formatAddress():
         clear()
         print("Please enter your ZIP Code.\n")
         zip = input("\nZIP Code: ")
+        if zip.lower() in quit:
+            return
         if not zip.isnumeric():
             print("\nZIP code must only contain digits!")
         elif len(zip) != 5:
@@ -1150,12 +1157,15 @@ def editUser(cursor, user, admin=False, user2=None):
                     break
                 print(f"Current Address: {record[0]}")
             # change address
-            user.setAddress(formatAddress())
-            # start transaction
-            cursor.execute("START TRANSACTION;")
-            cursor.execute(f"UPDATE customers SET address = '{user.getAddress()}' WHERE username='{user.getUsername()}';")
-            # commit changes
-            cursor.execute("COMMIT;")
+            new_address = formatAddress()
+            if new_address is str:
+                user.setAddress(new_address)
+                # start transaction
+                cursor.execute("START TRANSACTION;")
+                cursor.execute(f"UPDATE customers SET address = '{user.getAddress()}' WHERE username='{user.getUsername()}';")
+                logging.info("User updated address in database...")
+                # commit changes
+                cursor.execute("COMMIT;")
         elif choice == "4":
             changeName(cursor, user)
         elif choice == "5":
@@ -1285,8 +1295,9 @@ def editUser(cursor, user, admin=False, user2=None):
             m_choice = 6
             if admin:
                 m_choice = 7
-            print(f"Please choose a valid option (0-{m_choice}).")
+            print(f"Please choose a valid option (Select a digit from 0-{m_choice}).")
             logging.info("User entered invalid input...")
+            tf.pause(2)
             continue
 
 def viewCatalog(cursor):
@@ -1418,6 +1429,7 @@ def login(cursor, user=None):
             print()
             while True:
                 print("Please enter your password.\n")
+                # password = input("\nPassword: ")
                 password = getpass("\nPassword: ")
                 ckey = passKeyGenerator(password, cursor)
                 if pcount >= 5:
@@ -1446,6 +1458,7 @@ def login(cursor, user=None):
                         user = User(_user[0], _user[1], _user[2], _user[3], _user[4], _user[5], True)
                     else:
                         user = User(_user[0], _user[1], _user[2], _user[3], _user[4], _user[5])
+                    logging.info(f"User {username} has logged into the application...")
                     tf.pause(1)
                     return user
 
@@ -1470,6 +1483,7 @@ def passKeyGenerator(password, cursor):
         for record in cursor:
             if re.search(f'{char}', record[1]) != None:
                 n2 += record[0]
+    logging.info(f"New passkey generated...")
     return n1 * n2
 
 def clear():
